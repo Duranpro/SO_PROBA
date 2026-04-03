@@ -1,0 +1,11 @@
+TheVale
+./data/thevale
+4
+192.168.1.3
+8173
+--- ROUTES ---
+Driftmark 192.168.1.3 8172
+Dragonstone 192.168.1.4 8171
+Winterfell 192.168.1.5 8174
+KingsLanding *.*.*.* 0
+DEFAULT 192.168.1.4 8171

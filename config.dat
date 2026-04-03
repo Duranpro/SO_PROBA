@@ -1,0 +1,11 @@
+Dragonstone
+./data/dragonstone
+3
+192.168.1.4
+8171
+--- ROUTES ---
+KingsLanding 192.168.1.4 8170
+TheVale 192.168.1.3 8173
+Winterfell *.*.*.* 0
+Driftmark *.*.*.* 0
+DEFAULT 192.168.1.3 8173

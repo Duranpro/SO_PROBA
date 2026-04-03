@@ -1,0 +1,11 @@
+Winterfell
+./data/winterfell
+2
+192.168.1.5
+8174
+--- ROUTES ---
+TheVale 192.168.1.3 8173
+Dragonstone *.*.*.* 0
+KingsLanding *.*.*.* 0
+Driftmark *.*.*.* 0
+DEFAULT 192.168.1.4 8171

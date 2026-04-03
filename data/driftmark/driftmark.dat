@@ -1,0 +1,11 @@
+Driftmark
+./data/driftmark
+2
+192.168.1.3
+8172
+--- ROUTES ---
+TheVale 192.168.1.3 8173
+KingsLanding *.*.*.* 0
+Dragonstone *.*.*.* 0
+Winterfell *.*.*.* 0
+DEFAULT 192.168.1.3 8173
