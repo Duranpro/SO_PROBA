@@ -4,5 +4,6 @@
 #include "../realm/maester.h"
 
 bool commands_dispatch(MaesterContext *context, const char *line);
+void commands_poll_background(MaesterContext *context);
 
 #endif

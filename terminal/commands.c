@@ -1,6 +1,7 @@
 #include "commands.h"
 
 #include "../config/config.h"
+#include "../envoy/envoy.h"
 #include "../network/network.h"
 #include "../stock/stock.h"
 #include "../trade/trade.h"
@@ -38,6 +39,32 @@ static void commands_print_trade_authorization_error(const char *realm_name) {
     }
 }
 
+static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType mission,
+                                 const char *realm, const char *arg) {
+    int envoy_index = -1;
+    char *line = NULL;
+
+    if (context == NULL) {
+        return -1;
+    }
+
+    envoy_index = envoy_manager_assign(&context->envoys, mission, realm, arg);
+    if (envoy_index < 0) {
+        utils_println("No free Envoys available right now.");
+        return -1;
+    }
+
+    if (asprintf(&line, "Mission delegated to Envoy %d (%s %s).",
+                 envoy_index,
+                 envoy_mission_text(mission),
+                 realm != NULL ? realm : "-") >= 0 && line != NULL) {
+        utils_println(line);
+        free(line);
+    }
+
+    return envoy_index;
+}
+
 static bool commands_handle_list(MaesterContext *context, char **tokens, size_t count) {
     if (count == 1) {
         commands_print_incomplete("LIST needs a target. Try LIST REALMS or LIST PRODUCTS.");
@@ -59,6 +86,7 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
             return true;
         }
         if (count == 3) {
+            int envoy_index = -1;
             if (!commands_realm_exists(&context->config, tokens[2])) {
                 utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
                 return true;
@@ -67,7 +95,12 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
                 commands_print_trade_authorization_error(tokens[2]);
                 return true;
             }
+            envoy_index = commands_assign_envoy(context, ENVOY_MISSION_LIST_PRODUCTS, tokens[2], NULL);
+            if (envoy_index < 0) {
+                return true;
+            }
             if (!network_request_remote_products(&context->network, tokens[2])) {
+                envoy_manager_complete(&context->envoys, envoy_index, false);
                 utils_println("Could not contact the allied realm.");
             }
             return true;
@@ -102,9 +135,16 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
         }
         if (count == 4 &&
             (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
+            int envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE_RESPOND, tokens[2], tokens[3]);
+            if (envoy_index < 0) {
+                return true;
+            }
             if (!network_send_pledge_response(&context->network, tokens[2],
                                               utils_equals_ignore_case(tokens[3], "ACCEPT"))) {
+                envoy_manager_complete(&context->envoys, envoy_index, false);
                 utils_println("There is no pending pledge from that realm.");
+            } else {
+                envoy_manager_complete(&context->envoys, envoy_index, true);
             }
             return true;
         }
@@ -118,11 +158,17 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
     }
 
     if (count == 3) {
+        int envoy_index = -1;
         if (!commands_realm_exists(&context->config, tokens[1])) {
             utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
             return true;
         }
+        envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2]);
+        if (envoy_index < 0) {
+            return true;
+        }
         if (!network_send_pledge(&context->network, tokens[1], tokens[2])) {
+            envoy_manager_complete(&context->envoys, envoy_index, false);
             utils_println("Could not send the pledge request.");
         }
         return true;
@@ -157,7 +203,7 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             commands_print_trade_authorization_error(tokens[2]);
             return true;
         }
-        trade_run_local(&context->config, &context->stock, &context->network, tokens[2]);
+        trade_run_local(&context->config, &context->stock, &context->network, &context->envoys, tokens[2]);
         return true;
     }
 
@@ -165,14 +211,14 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
     return true;
 }
 
-static bool commands_handle_envoy(char **tokens, size_t count) {
+static bool commands_handle_envoy(MaesterContext *context, char **tokens, size_t count) {
     if (count == 1) {
         commands_print_incomplete("ENVOY needs a subcommand. Use ENVOY STATUS.");
         return true;
     }
 
     if (count == 2 && utils_equals_ignore_case(tokens[1], "STATUS")) {
-        utils_println("Command OK");
+        envoy_manager_print_status(&context->envoys);
         return true;
     }
 
@@ -209,7 +255,7 @@ bool commands_dispatch(MaesterContext *context, const char *line) {
     } else if (utils_equals_ignore_case(tokens[0], "START")) {
         keep_running = commands_handle_start(context, tokens, count);
     } else if (utils_equals_ignore_case(tokens[0], "ENVOY")) {
-        keep_running = commands_handle_envoy(tokens, count);
+        keep_running = commands_handle_envoy(context, tokens, count);
     } else if (utils_equals_ignore_case(tokens[0], "EXIT")) {
         if (count == 1) {
             keep_running = false;
@@ -222,4 +268,42 @@ bool commands_dispatch(MaesterContext *context, const char *line) {
 
     free(copy);
     return keep_running;
+}
+
+void commands_poll_background(MaesterContext *context) {
+    size_t i = 0;
+
+    if (context == NULL) {
+        return;
+    }
+
+    envoy_manager_poll_events(&context->envoys);
+
+    for (i = 0; i < context->config.route_count; ++i) {
+        const char *realm = context->config.routes[i].realm_name;
+        int envoy_index = -1;
+        AllianceStatus status = ALLIANCE_NONE;
+        bool waiting = false;
+
+        if (utils_equals_ignore_case(realm, "DEFAULT")) {
+            continue;
+        }
+
+        envoy_index = envoy_manager_find_busy(&context->envoys, ENVOY_MISSION_PLEDGE, realm);
+        if (envoy_index >= 0 && network_get_alliance_status(&context->network, realm, &status)) {
+            if (status != ALLIANCE_PENDING_OUT && status != ALLIANCE_PENDING_IN) {
+                envoy_manager_complete(&context->envoys, envoy_index, status == ALLIANCE_ALLIED);
+            }
+        }
+
+        envoy_index = envoy_manager_find_busy(&context->envoys, ENVOY_MISSION_LIST_PRODUCTS, realm);
+        if (envoy_index >= 0 && network_is_waiting_products(&context->network, realm, &waiting) && !waiting) {
+            envoy_manager_complete(&context->envoys, envoy_index, true);
+        }
+
+        envoy_index = envoy_manager_find_busy(&context->envoys, ENVOY_MISSION_TRADE, realm);
+        if (envoy_index >= 0 && network_is_waiting_trade(&context->network, realm, &waiting) && !waiting) {
+            envoy_manager_complete(&context->envoys, envoy_index, true);
+        }
+    }
 }

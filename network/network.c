@@ -1556,17 +1556,38 @@ static void network_handle_unknown_realm(const NetworkFrame *frame) {
     free(data);
 }
 
-static void network_handle_auth_error(const NetworkFrame *frame) {
+static void network_handle_auth_error(NetworkContext *network, const NetworkFrame *frame) {
     char *data = frame_data_to_text(frame);
+    char *copy = NULL;
+    char *token = NULL;
+    char *realm_name = NULL;
     char *line = NULL;
 
-    if (data == NULL) {
+    if (network == NULL || data == NULL) {
         return;
     }
 
     if (asprintf(&line, "Authorization error: %s", data) >= 0 && line != NULL) {
         network_log_line(line);
         free(line);
+    }
+
+    copy = utils_strdup_safe(data);
+    if (copy != NULL) {
+        token = strtok(copy, "&");
+        realm_name = strtok(NULL, "&");
+        if (token != NULL && realm_name != NULL) {
+            pthread_mutex_lock(&network->lock);
+            {
+                AllianceEntry *entry = network_find_entry_locked(network, realm_name);
+                if (entry != NULL) {
+                    entry->waiting_products = false;
+                    entry->waiting_trade_ack = false;
+                }
+            }
+            pthread_mutex_unlock(&network->lock);
+        }
+        free(copy);
     }
 
     free(data);
@@ -1639,7 +1660,7 @@ static void network_process_local_frame(NetworkContext *network, const NetworkFr
             network_handle_unknown_realm(frame);
             break;
         case FRAME_TYPE_AUTH_ERROR:
-            network_handle_auth_error(frame);
+            network_handle_auth_error(network, frame);
             break;
         case FRAME_TYPE_DISCONNECT:
             network_handle_disconnect(network, frame);
@@ -2195,6 +2216,60 @@ bool network_get_remote_products_copy(NetworkContext *network, const char *realm
     pthread_mutex_unlock(&network->lock);
 
     return *products_out != NULL;
+}
+
+bool network_get_alliance_status(NetworkContext *network, const char *realm_name, AllianceStatus *status_out) {
+    AllianceEntry *entry = NULL;
+
+    if (network == NULL || realm_name == NULL || status_out == NULL) {
+        return false;
+    }
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm_name);
+    if (entry == NULL) {
+        pthread_mutex_unlock(&network->lock);
+        return false;
+    }
+    *status_out = entry->status;
+    pthread_mutex_unlock(&network->lock);
+    return true;
+}
+
+bool network_is_waiting_products(NetworkContext *network, const char *realm_name, bool *waiting_out) {
+    AllianceEntry *entry = NULL;
+
+    if (network == NULL || realm_name == NULL || waiting_out == NULL) {
+        return false;
+    }
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm_name);
+    if (entry == NULL) {
+        pthread_mutex_unlock(&network->lock);
+        return false;
+    }
+    *waiting_out = entry->waiting_products;
+    pthread_mutex_unlock(&network->lock);
+    return true;
+}
+
+bool network_is_waiting_trade(NetworkContext *network, const char *realm_name, bool *waiting_out) {
+    AllianceEntry *entry = NULL;
+
+    if (network == NULL || realm_name == NULL || waiting_out == NULL) {
+        return false;
+    }
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm_name);
+    if (entry == NULL) {
+        pthread_mutex_unlock(&network->lock);
+        return false;
+    }
+    *waiting_out = entry->waiting_trade_ack;
+    pthread_mutex_unlock(&network->lock);
+    return true;
 }
 
 void network_print_pledge_status(NetworkContext *network) {
