@@ -12,6 +12,7 @@ typedef struct {
     const CitadelConfig *config;
     const Stock *stock;
     NetworkContext *network;
+    EnvoyManager *envoys;
     Product *available_products;
     size_t available_count;
     TradeItem *items;
@@ -270,7 +271,8 @@ static void trade_help(const char *command) {
     }
 }
 
-bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network, const char *target_realm) {
+bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network,
+                     EnvoyManager *envoys, const char *target_realm) {
     TradeSession session;
     bool keep_running = true;
     char *line = NULL;
@@ -280,6 +282,7 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
     session.config = config;
     session.stock = stock;
     session.network = network;
+    session.envoys = envoys;
 
     if (session.target_realm == NULL) {
         return false;
@@ -363,21 +366,37 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
                     utils_println("Could not write the shopping list. Please try again.");
                     free(file_path);
                     free(file_name);
-                } else if (session.network != NULL &&
-                           !network_send_trade_offer(session.network, session.target_realm, file_path)) {
-                    utils_println("Trade list saved locally, but the ally could not be notified.");
-                    free(file_path);
-                    free(file_name);
                 } else {
+                    int envoy_index = -1;
                     char *message = NULL;
-                    int written = asprintf(&message, "Trade list sent to %s.\n", session.target_realm);
-                    free(file_path);
-                    free(file_name);
-                    if (written >= 0 && message != NULL) {
-                        utils_print(message);
-                        free(message);
+                    int written = 0;
+
+                    if (session.envoys != NULL) {
+                        envoy_index = envoy_manager_assign(session.envoys, ENVOY_MISSION_TRADE,
+                                                           session.target_realm, file_path);
                     }
-                    keep_running = false;
+
+                    if (envoy_index < 0) {
+                        utils_println("No free Envoys available right now.");
+                        free(file_path);
+                        free(file_name);
+                    } else if (session.network != NULL &&
+                               !network_send_trade_offer(session.network, session.target_realm, file_path)) {
+                        envoy_manager_complete(session.envoys, envoy_index, false);
+                        utils_println("Trade list saved locally, but the ally could not be notified.");
+                        free(file_path);
+                        free(file_name);
+                    } else {
+                        written = asprintf(&message, "Trade mission delegated to Envoy %d for %s.\n",
+                                           envoy_index, session.target_realm);
+                        free(file_path);
+                        free(file_name);
+                        if (written >= 0 && message != NULL) {
+                            utils_print(message);
+                            free(message);
+                        }
+                        keep_running = false;
+                    }
                 }
             }
         } else if (utils_equals_ignore_case(tokens[0], "cancel") || utils_equals_ignore_case(tokens[0], "exit")) {

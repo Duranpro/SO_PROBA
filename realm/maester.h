@@ -2,6 +2,7 @@
 #define MAESTER_H
 
 #include "../config/config.h"
+#include "../envoy/envoy.h"
 #include "../network/network.h"
 #include "../stock/stock.h"
 #include "../utils/system.h"
@@ -10,6 +11,7 @@ typedef struct {
     CitadelConfig config;
     Stock stock;
     NetworkContext network;
+    EnvoyManager envoys;
 } MaesterContext;
 
 void maester_context_init(MaesterContext *context);

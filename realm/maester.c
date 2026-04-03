@@ -23,6 +23,7 @@ void maester_context_init(MaesterContext *context) {
     config_init(&context->config);
     stock_init(&context->stock);
     memset(&context->network, 0, sizeof(context->network));
+    envoy_manager_init_empty(&context->envoys);
 }
 
 void maester_context_destroy(MaesterContext *context) {
@@ -31,6 +32,7 @@ void maester_context_destroy(MaesterContext *context) {
     }
 
     stock_save(&context->stock);
+    envoy_manager_shutdown(&context->envoys);
     network_shutdown(&context->network);
     stock_free(&context->stock);
     config_free(&context->config);
@@ -179,6 +181,12 @@ int main(int argc, char **argv) {
     maester_launch_paths_free(&paths);
     if (!network_init(&context.network, &context.config, &context.stock)) {
         utils_println("Could not initialize the network.");
+        maester_context_destroy(&context);
+        return EXIT_FAILURE;
+    }
+
+    if (!envoy_manager_init(&context.envoys, context.config.envoy_count)) {
+        utils_println("Could not initialize Envoys.");
         maester_context_destroy(&context);
         return EXIT_FAILURE;
     }
