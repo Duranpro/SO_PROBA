@@ -39,6 +39,10 @@ static void commands_print_trade_authorization_error(const char *realm_name) {
     }
 }
 
+static void commands_print_envoys_busy_message(void) {
+    utils_println("All envoys are occupied. Your command must wait.");
+}
+
 static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType mission,
                                  const char *realm, const char *arg) {
     int envoy_index = -1;
@@ -50,7 +54,7 @@ static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType missi
 
     envoy_index = envoy_manager_assign(&context->envoys, mission, realm, arg);
     if (envoy_index < 0) {
-        utils_println("No free Envoys available right now.");
+        commands_print_envoys_busy_message();
         return -1;
     }
 
@@ -199,6 +203,10 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
             return true;
         }
+        if (!envoy_manager_has_free(&context->envoys)) {
+            commands_print_envoys_busy_message();
+            return true;
+        }
         if (!network_has_active_alliance(&context->network, tokens[2])) {
             commands_print_trade_authorization_error(tokens[2]);
             return true;
@@ -219,6 +227,27 @@ static bool commands_handle_envoy(MaesterContext *context, char **tokens, size_t
 
     if (count == 2 && utils_equals_ignore_case(tokens[1], "STATUS")) {
         envoy_manager_print_status(&context->envoys);
+        return true;
+    }
+
+    utils_println("Unknown command");
+    return true;
+}
+
+static bool commands_handle_ping(MaesterContext *context, char **tokens, size_t count) {
+    if (count == 1) {
+        commands_print_incomplete("PING is incomplete. Use PING <REALM>.");
+        return true;
+    }
+
+    if (count == 2) {
+        if (!commands_realm_exists(&context->config, tokens[1])) {
+            utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
+            return true;
+        }
+        if (!network_send_ping(&context->network, tokens[1])) {
+            utils_println("Could not send PING.");
+        }
         return true;
     }
 
@@ -256,6 +285,8 @@ bool commands_dispatch(MaesterContext *context, const char *line) {
         keep_running = commands_handle_start(context, tokens, count);
     } else if (utils_equals_ignore_case(tokens[0], "ENVOY")) {
         keep_running = commands_handle_envoy(context, tokens, count);
+    } else if (utils_equals_ignore_case(tokens[0], "PING")) {
+        keep_running = commands_handle_ping(context, tokens, count);
     } else if (utils_equals_ignore_case(tokens[0], "EXIT")) {
         if (count == 1) {
             keep_running = false;

@@ -41,6 +41,7 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission,
                          const char *realm, const char *arg);
 bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success);
 int envoy_manager_find_busy(EnvoyManager *manager, EnvoyMissionType mission, const char *realm);
+bool envoy_manager_has_free(EnvoyManager *manager);
 void envoy_manager_poll_events(EnvoyManager *manager);
 void envoy_manager_print_status(EnvoyManager *manager);
 

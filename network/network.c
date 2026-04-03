@@ -1521,10 +1521,14 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
     if (*data != '\0') {
         pthread_mutex_lock(&network->lock);
         entry = network_find_entry_locked(network, data);
-        if (entry != NULL && (entry->status == ALLIANCE_PENDING_OUT || entry->status == ALLIANCE_PENDING_IN)) {
-            entry->status = ALLIANCE_FAILED;
-            entry->deadline = 0;
-            entry->sigil_verified = false;
+        if (entry != NULL) {
+            entry->waiting_products = false;
+            entry->waiting_trade_ack = false;
+            if (entry->status == ALLIANCE_PENDING_OUT || entry->status == ALLIANCE_PENDING_IN) {
+                entry->status = ALLIANCE_FAILED;
+                entry->deadline = 0;
+                entry->sigil_verified = false;
+            }
         }
         pthread_mutex_unlock(&network->lock);
 
@@ -1540,17 +1544,42 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
     free(data);
 }
 
-static void network_handle_unknown_realm(const NetworkFrame *frame) {
+static void network_handle_unknown_realm(NetworkContext *network, const NetworkFrame *frame) {
     char *data = frame_data_to_text(frame);
+    char *copy = NULL;
+    char *kind = NULL;
+    char *realm_name = NULL;
     char *line = NULL;
 
-    if (data == NULL) {
+    if (network == NULL || data == NULL) {
         return;
     }
 
     if (asprintf(&line, "Routing error: %s", data) >= 0 && line != NULL) {
         network_log_line(line);
         free(line);
+    }
+
+    copy = utils_strdup_safe(data);
+    if (copy != NULL) {
+        kind = strtok(copy, "&");
+        realm_name = strtok(NULL, "&");
+        if (kind != NULL && realm_name != NULL && utils_equals_ignore_case(kind, "UNKNOWN_REALM")) {
+            pthread_mutex_lock(&network->lock);
+            {
+                AllianceEntry *entry = network_find_entry_locked(network, realm_name);
+                if (entry != NULL) {
+                    entry->waiting_products = false;
+                    entry->waiting_trade_ack = false;
+                    if (entry->status == ALLIANCE_PENDING_OUT) {
+                        entry->status = ALLIANCE_FAILED;
+                        entry->deadline = 0;
+                    }
+                }
+            }
+            pthread_mutex_unlock(&network->lock);
+        }
+        free(copy);
     }
 
     free(data);
@@ -1618,6 +1647,56 @@ static void network_handle_disconnect(NetworkContext *network, const NetworkFram
     free(realm_name);
 }
 
+static void network_handle_ping(NetworkContext *network, const NetworkFrame *frame) {
+    char *payload = NULL;
+    char *origin = NULL;
+    char *origin_realm = NULL;
+    char *line = NULL;
+    NetworkFrame response;
+
+    if (network == NULL || frame == NULL) {
+        return;
+    }
+
+    payload = frame_data_to_text(frame);
+    if (payload == NULL) {
+        return;
+    }
+
+    if (utils_equals_ignore_case(payload, "PONG")) {
+        origin_realm = network_find_realm_by_endpoint(network, frame->origin);
+        if (origin_realm == NULL) {
+            origin_realm = utils_strdup_safe(frame->origin);
+        }
+        if (origin_realm != NULL &&
+            asprintf(&line, "PONG received from %s.", origin_realm) >= 0 && line != NULL) {
+            network_log_line(line);
+            free(line);
+        }
+        free(origin_realm);
+        free(payload);
+        return;
+    }
+
+    origin = network_build_self_endpoint(network->config);
+    if (origin == NULL) {
+        free(payload);
+        return;
+    }
+
+    origin_realm = network_find_realm_by_endpoint(network, frame->origin);
+    if (origin_realm != NULL &&
+        frame_set(&response, FRAME_TYPE_PING, origin, origin_realm, "PONG", strlen("PONG"))) {
+        network_send_frame_to_realm(network, origin_realm, &response);
+    } else if (frame_set(&response, FRAME_TYPE_PING, origin, frame->origin, "PONG", strlen("PONG"))) {
+        network_send_frame_to_endpoint(frame->origin, &response);
+    }
+
+    free(origin_realm);
+    free(origin);
+    free(payload);
+}
+
 static void network_process_local_frame(NetworkContext *network, const NetworkFrame *frame) {
     switch (frame->type) {
         case FRAME_TYPE_PLEDGE:
@@ -1657,13 +1736,16 @@ static void network_process_local_frame(NetworkContext *network, const NetworkFr
             network_handle_nack(network, frame);
             break;
         case FRAME_TYPE_UNKNOWN_REALM:
-            network_handle_unknown_realm(frame);
+            network_handle_unknown_realm(network, frame);
             break;
         case FRAME_TYPE_AUTH_ERROR:
             network_handle_auth_error(network, frame);
             break;
         case FRAME_TYPE_DISCONNECT:
             network_handle_disconnect(network, frame);
+            break;
+        case FRAME_TYPE_PING:
+            network_handle_ping(network, frame);
             break;
         default:
             break;
@@ -2189,6 +2271,27 @@ bool network_send_trade_offer(NetworkContext *network, const char *realm_name, c
     free(file_name);
     free(origin);
     free(data);
+    return sent;
+}
+
+bool network_send_ping(NetworkContext *network, const char *realm_name) {
+    NetworkFrame frame;
+    char *origin = NULL;
+    bool sent = false;
+
+    if (network == NULL || realm_name == NULL || *realm_name == '\0') {
+        return false;
+    }
+
+    origin = network_build_self_endpoint(network->config);
+    if (origin == NULL ||
+        !frame_set(&frame, FRAME_TYPE_PING, origin, realm_name, "PING", strlen("PING"))) {
+        free(origin);
+        return false;
+    }
+
+    sent = network_send_frame_to_realm(network, realm_name, &frame);
+    free(origin);
     return sent;
 }
 

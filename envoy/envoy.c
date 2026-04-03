@@ -393,6 +393,25 @@ int envoy_manager_find_busy(EnvoyManager *manager, EnvoyMissionType mission, con
     return -1;
 }
 
+bool envoy_manager_has_free(EnvoyManager *manager) {
+    int i = 0;
+    bool free_found = false;
+
+    if (manager == NULL || !manager->initialized) {
+        return false;
+    }
+
+    pthread_mutex_lock(&manager->lock);
+    for (i = 0; i < manager->count; ++i) {
+        if (manager->envoys[i].alive && !manager->envoys[i].busy) {
+            free_found = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&manager->lock);
+    return free_found;
+}
+
 void envoy_manager_poll_events(EnvoyManager *manager) {
 #ifndef _WIN32
     int i = 0;
