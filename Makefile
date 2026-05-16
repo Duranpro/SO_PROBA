@@ -1,16 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -D_GNU_SOURCE -pthread
-TARGET = Maester$(EXE)
-
-ifeq ($(OS),Windows_NT)
-LDLIBS = -lws2_32
-RM = del /Q
-EXE = .exe
-else
+TARGET = Maester
 LDLIBS =
 RM = rm -f
-EXE =
-endif
 
 all: $(TARGET)
 
@@ -51,8 +43,4 @@ $(TARGET): realm/maester.o config/config.o stock/stock.o trade/trade.o transfer/
 	$(CC) $(CFLAGS) realm/maester.o config/config.o stock/stock.o trade/trade.o transfer/transfer.o envoy/envoy.o terminal/terminal.o terminal/commands.o utils/utils.o network/network.o network/frame.o -o $(TARGET) $(LDLIBS)
 
 clean:
-ifeq ($(OS),Windows_NT)
-	-$(RM) realm\*.o config\*.o stock\*.o trade\*.o transfer\*.o envoy\*.o terminal\*.o utils\*.o network\*.o Maester.exe maester.exe 2>NUL
-else
 	$(RM) realm/*.o config/*.o stock/*.o trade/*.o transfer/*.o envoy/*.o terminal/*.o utils/*.o network/*.o Maester maester
-endif

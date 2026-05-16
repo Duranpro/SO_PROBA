@@ -20,7 +20,6 @@ typedef struct {
     char arg[160];
 } EnvoyIpcMessage;
 
-#ifndef _WIN32
 static ssize_t envoy_pipe_read_full(int fd, void *buffer, size_t size) {
     size_t total = 0;
 
@@ -60,7 +59,6 @@ static bool envoy_pipe_write_full(int fd, const void *buffer, size_t size) {
 
     return true;
 }
-#endif
 
 const char *envoy_mission_text(EnvoyMissionType mission) {
     switch (mission) {
@@ -86,7 +84,6 @@ void envoy_manager_init_empty(EnvoyManager *manager) {
     memset(manager, 0, sizeof(*manager));
 }
 
-#ifndef _WIN32
 static void envoy_child_loop(int read_fd, int write_fd) {
     bool running = true;
     bool mission_active = false;
@@ -192,7 +189,6 @@ static bool envoy_spawn_one(EnvoyProcess *envoy) {
     fcntl(envoy->from_child_fd, F_SETFL, O_NONBLOCK);
     return true;
 }
-#endif
 
 bool envoy_manager_init(EnvoyManager *manager, int count) {
     int i = 0;
@@ -218,7 +214,6 @@ bool envoy_manager_init(EnvoyManager *manager, int count) {
         return false;
     }
 
-#ifndef _WIN32
     for (i = 0; i < count; ++i) {
         if (!envoy_spawn_one(&manager->envoys[i])) {
             manager->count = i;
@@ -226,16 +221,6 @@ bool envoy_manager_init(EnvoyManager *manager, int count) {
             return false;
         }
     }
-#else
-    for (i = 0; i < count; ++i) {
-        manager->envoys[i].pid = 0;
-        manager->envoys[i].to_child_fd = -1;
-        manager->envoys[i].from_child_fd = -1;
-        manager->envoys[i].alive = true;
-        manager->envoys[i].busy = false;
-        manager->envoys[i].mission = ENVOY_MISSION_NONE;
-    }
-#endif
 
     manager->initialized = true;
     return true;
@@ -261,7 +246,6 @@ void envoy_manager_shutdown(EnvoyManager *manager) {
     }
 
     pthread_mutex_lock(&manager->lock);
-#ifndef _WIN32
     int i = 0;
     for (i = 0; i < manager->count; ++i) {
         EnvoyIpcMessage message;
@@ -287,7 +271,6 @@ void envoy_manager_shutdown(EnvoyManager *manager) {
         }
         manager->envoys[i].alive = false;
     }
-#endif
     pthread_mutex_unlock(&manager->lock);
 
     free(manager->envoys);
@@ -331,7 +314,6 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const 
         strncpy(envoy->arg, safe_arg, sizeof(envoy->arg) - 1);
         envoy->arg[sizeof(envoy->arg) - 1] = '\0';
 
-#ifndef _WIN32
         {
             EnvoyIpcMessage message;
             memset(&message, 0, sizeof(message));
@@ -345,7 +327,6 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const 
                 return -1;
             }
         }
-#endif
         pthread_mutex_unlock(&manager->lock);
         return i;
     }
@@ -367,7 +348,6 @@ bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success
     manager->envoys[envoy_index].last_success = success;
     manager->envoys[envoy_index].completion_sent = true;
 
-#ifndef _WIN32
     {
         EnvoyIpcMessage message;
         memset(&message, 0, sizeof(message));
@@ -385,9 +365,6 @@ bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success
             return false;
         }
     }
-#else
-    envoy_reset_process(&manager->envoys[envoy_index]);
-#endif
 
     pthread_mutex_unlock(&manager->lock);
     return true;
@@ -432,7 +409,6 @@ bool envoy_manager_has_free(EnvoyManager *manager) {
 }
 
 void envoy_manager_poll_events(EnvoyManager *manager) {
-#ifndef _WIN32
     int i = 0;
 
     if (manager == NULL || !manager->initialized) {
@@ -467,9 +443,6 @@ void envoy_manager_poll_events(EnvoyManager *manager) {
         }
     }
     pthread_mutex_unlock(&manager->lock);
-#else
-    (void) manager;
-#endif
 }
 
 void envoy_manager_print_status(EnvoyManager *manager) {

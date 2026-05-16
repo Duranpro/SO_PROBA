@@ -4,11 +4,6 @@
 #include "commands.h"
 
 static char *terminal_read_line_with_background(MaesterContext *context, volatile sig_atomic_t *stop_requested) {
-#ifdef _WIN32
-    (void) context;
-    (void) stop_requested;
-    return utils_read_line_fd(STDIN_FILENO);
-#else
     size_t capacity = 128;
     size_t length = 0;
     char *buffer = (char *) malloc(capacity);
@@ -91,7 +86,6 @@ static char *terminal_read_line_with_background(MaesterContext *context, volatil
 
     free(buffer);
     return NULL;
-#endif
 }
 
 void terminal_run(MaesterContext *context, volatile sig_atomic_t *stop_requested) {

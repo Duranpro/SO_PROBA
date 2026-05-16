@@ -14,11 +14,6 @@ static char *transfer_basename_copy(const char *path) {
     }
 
     name = strrchr(path, '/');
-#ifdef _WIN32
-    if (name == NULL) {
-        name = strrchr(path, '\\');
-    }
-#endif
     if (name != NULL) {
         name++;
     } else {
@@ -29,13 +24,6 @@ static char *transfer_basename_copy(const char *path) {
 }
 
 bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH + 1]) {
-#ifdef _WIN32
-    (void) path;
-    if (md5_out != NULL) {
-        md5_out[0] = '\0';
-    }
-    return false;
-#else
     int pipefd[2] = {-1, -1};
     pid_t pid = 0;
     char buffer[256];
@@ -96,7 +84,6 @@ bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH +
     memcpy(md5_out, buffer, CITADEL_MD5_LENGTH);
     md5_out[CITADEL_MD5_LENGTH] = '\0';
     return true;
-#endif
 }
 
 bool transfer_get_file_info(const char *path, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {

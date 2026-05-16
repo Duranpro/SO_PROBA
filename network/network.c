@@ -266,18 +266,10 @@ static void network_inbound_reset(NetworkContext *network) {
 }
 
 static bool network_socket_init(void) {
-#ifdef _WIN32
-    WSADATA data;
-    return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-#else
     return true;
-#endif
 }
 
 static void network_socket_cleanup(void) {
-#ifdef _WIN32
-    WSACleanup();
-#endif
 }
 
 static citadel_socket_t network_create_listener(const CitadelConfig *config) {
@@ -334,11 +326,7 @@ static bool network_recv_exact(citadel_socket_t socket_fd, unsigned char *buffer
         return false;
     }
 
-#ifdef _WIN32
-    bytes = recv(socket_fd, (char *) buffer, (int) size, 0);
-#else
     bytes = recv(socket_fd, (char *) buffer, (int) size, MSG_WAITALL);
-#endif
     return bytes == (ssize_t) size;
 }
 
