@@ -387,8 +387,7 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
                         free(file_path);
                         free(file_name);
                     } else {
-                        written = asprintf(&message, "Trade mission delegated to Envoy %d for %s.\n",
-                                           envoy_index, session.target_realm);
+                        written = asprintf(&message, "Trade list sent to %s.\n", session.target_realm);
                         free(file_path);
                         free(file_name);
                         if (written >= 0 && message != NULL) {

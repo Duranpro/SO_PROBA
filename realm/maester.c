@@ -201,6 +201,14 @@ int main(int argc, char **argv) {
     }
 
     terminal_run(&context, &g_stop_requested);
+    if (g_stop_requested == 0) {
+        char *line = NULL;
+        if (asprintf(&line, "The Maester of %s signs off. The ravens rest.\n", context.config.realm_name) >= 0 &&
+            line != NULL) {
+            utils_print(line);
+            free(line);
+        }
+    }
     maester_context_destroy(&context);
 
     return EXIT_SUCCESS;

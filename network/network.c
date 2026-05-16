@@ -80,9 +80,9 @@ static const char *network_status_text(AllianceStatus status) {
         case ALLIANCE_PENDING_OUT:
             return "PENDING";
         case ALLIANCE_PENDING_IN:
-            return "AWAITING_RESPONSE";
+            return "PENDING";
         case ALLIANCE_ALLIED:
-            return "ALLIED";
+            return "ACCEPTED";
         case ALLIANCE_INACTIVE:
             return "INACTIVE";
         case ALLIANCE_REJECTED:
@@ -1062,8 +1062,8 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     if (!stale) {
         char *line = NULL;
-        if (asprintf(&line, "Alliance with %s %s.", realm_name,
-                     accepted ? "forged successfully" : "was rejected") >= 0 && line != NULL) {
+        if (asprintf(&line, "Alliance with %s %s!", realm_name,
+                     accepted ? "forged successfully" : "was refused") >= 0 && line != NULL) {
             network_log_line(line);
             free(line);
         }
@@ -1103,6 +1103,14 @@ static void network_handle_products_request(NetworkContext *network, const Netwo
     if (!transfer_write_inventory_file(network->config, network->stock, &file_path, &file_name, &file_size, md5)) {
         free(origin_realm);
         return;
+    }
+
+    {
+        char *line = NULL;
+        if (asprintf(&line, "LIST PRODUCTS request from %s.", origin_realm) >= 0 && line != NULL) {
+            network_log_line(line);
+            free(line);
+        }
     }
 
     origin = network_build_self_endpoint(network->config);
@@ -1449,6 +1457,7 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
     char *copy = NULL;
     char *status = NULL;
     char *realm_name = NULL;
+    TransferKind completed_kind = TRANSFER_NONE;
 
     if (data == NULL) {
         return;
@@ -1471,6 +1480,7 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
     if (network->outbound.active &&
         network->outbound.waiting_md5_ack &&
         utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
+        completed_kind = network->outbound.kind;
         if (utils_equals_ignore_case(status, "CHECK_OK")) {
             if (network->outbound.kind == TRANSFER_ORDER) {
                 network->outbound.waiting_md5_ack = false;
@@ -1493,7 +1503,9 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
 
     if (utils_equals_ignore_case(status, "CHECK_OK")) {
         char *line = NULL;
-        if (asprintf(&line, "Transfer verified by %s.", realm_name) >= 0 && line != NULL) {
+        if (completed_kind == TRANSFER_PRODUCTS) {
+            network_log_line("Products delivered.");
+        } else if (asprintf(&line, "Transfer verified by %s.", realm_name) >= 0 && line != NULL) {
             network_log_line(line);
             free(line);
         }
@@ -2075,7 +2087,7 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
         {
             char *line = NULL;
             if (asprintf(&line, "Pledge sent to %s.", realm_name) >= 0 && line != NULL) {
-                network_log_line(line);
+                utils_println(line);
                 free(line);
             }
         }
@@ -2140,7 +2152,7 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
             char *line = NULL;
             if (asprintf(&line, "Alliance with %s %s.", realm_name,
                          accepted ? "established" : "rejected") >= 0 && line != NULL) {
-                network_log_line(line);
+                utils_println(line);
                 free(line);
             }
         }
@@ -2377,6 +2389,7 @@ bool network_is_waiting_trade(NetworkContext *network, const char *realm_name, b
 
 void network_print_pledge_status(NetworkContext *network) {
     size_t i = 0;
+    bool printed = false;
 
     if (network == NULL) {
         return;
@@ -2385,11 +2398,19 @@ void network_print_pledge_status(NetworkContext *network) {
     pthread_mutex_lock(&network->lock);
     for (i = 0; i < network->alliance_count; ++i) {
         char *line = NULL;
+        if (network->alliances[i].status == ALLIANCE_NONE) {
+            continue;
+        }
         if (asprintf(&line, "- %s: %s\n", network->alliances[i].realm_name,
                      network_status_text(network->alliances[i].status)) >= 0 && line != NULL) {
             utils_print(line);
             free(line);
+            printed = true;
         }
     }
     pthread_mutex_unlock(&network->lock);
+
+    if (!printed) {
+        utils_println("You have no pledges awaiting or accepted");
+    }
 }

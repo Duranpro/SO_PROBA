@@ -46,7 +46,6 @@ static void commands_print_envoys_busy_message(void) {
 static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType mission,
                                  const char *realm, const char *arg) {
     int envoy_index = -1;
-    char *line = NULL;
 
     if (context == NULL) {
         return -1;
@@ -56,14 +55,6 @@ static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType missi
     if (envoy_index < 0) {
         commands_print_envoys_busy_message();
         return -1;
-    }
-
-    if (asprintf(&line, "Mission delegated to Envoy %d (%s %s).",
-                 envoy_index,
-                 envoy_mission_text(mission),
-                 realm != NULL ? realm : "-") >= 0 && line != NULL) {
-        utils_println(line);
-        free(line);
     }
 
     return envoy_index;
@@ -164,7 +155,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
     if (count == 3) {
         int envoy_index = -1;
         if (!commands_realm_exists(&context->config, tokens[1])) {
-            utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
+            utils_println("No such realm exists. The pledge is hereby withdrawn.");
             return true;
         }
         envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2]);
@@ -173,7 +164,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
         }
         if (!network_send_pledge(&context->network, tokens[1], tokens[2])) {
             envoy_manager_complete(&context->envoys, envoy_index, false);
-            utils_println("Could not send the pledge request.");
+            utils_println("No such realm exists. The pledge is hereby withdrawn.");
         }
         return true;
     }
@@ -211,6 +202,7 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             commands_print_trade_authorization_error(tokens[2]);
             return true;
         }
+        utils_println("Direct route available (allied). No hops required.");
         trade_run_local(&context->config, &context->stock, &context->network, &context->envoys, tokens[2]);
         return true;
     }

@@ -443,16 +443,6 @@ void envoy_manager_poll_events(EnvoyManager *manager) {
             if (message.kind == ENVOY_EVT_STARTED) {
                 envoy->started = true;
             } else if (message.kind == ENVOY_EVT_FINISHED) {
-                char *line = NULL;
-                bool success = message.success != 0;
-                if (asprintf(&line, "Envoy %d completed %s for %s (%s).",
-                             i,
-                             envoy_mission_text(envoy->mission),
-                             envoy->realm[0] != '\0' ? envoy->realm : "-",
-                             success ? "OK" : "FAILED") >= 0 && line != NULL) {
-                    utils_println(line);
-                    free(line);
-                }
                 envoy_reset_process(envoy);
             }
         }
@@ -475,12 +465,17 @@ void envoy_manager_print_status(EnvoyManager *manager) {
     for (i = 0; i < manager->count; ++i) {
         char *line = NULL;
         EnvoyProcess *envoy = &manager->envoys[i];
-        const char *state = envoy->busy ? "BUSY" : "FREE";
 
-        if (asprintf(&line, "Envoy %d | pid=%ld | %s | mission=%s | realm=%s\n",
-                     i,
-                     (long) envoy->pid,
-                     state,
+        if (!envoy->busy) {
+            if (asprintf(&line, "- Envoy %d: FREE\n", i + 1) >= 0 && line != NULL) {
+                utils_print(line);
+                free(line);
+            }
+            continue;
+        }
+
+        if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)\n",
+                     i + 1,
                      envoy_mission_text(envoy->mission),
                      envoy->realm[0] != '\0' ? envoy->realm : "-") >= 0 && line != NULL) {
             utils_print(line);
