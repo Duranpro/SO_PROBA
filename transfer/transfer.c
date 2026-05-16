@@ -99,8 +99,7 @@ bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH +
 #endif
 }
 
-bool transfer_get_file_info(const char *path, char **file_name_out, size_t *size_out,
-                            char md5_out[CITADEL_MD5_LENGTH + 1]) {
+bool transfer_get_file_info(const char *path, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     int fd = -1;
     off_t size = 0;
 
@@ -156,16 +155,13 @@ char *transfer_resolve_sigil_path(const CitadelConfig *config, const char *sigil
     return NULL;
 }
 
-bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *stock,
-                                   char **file_path_out, char **file_name_out,
-                                   size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
+bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *stock, char **file_path_out, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     char *file_name = NULL;
     char *file_path = NULL;
     char *content = NULL;
     size_t i = 0;
 
-    if (config == NULL || stock == NULL || file_path_out == NULL || file_name_out == NULL ||
-        size_out == NULL || md5_out == NULL) {
+    if (config == NULL || stock == NULL || file_path_out == NULL || file_name_out == NULL || size_out == NULL || md5_out == NULL) {
         return false;
     }
 
@@ -194,8 +190,7 @@ bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *sto
         char *line = NULL;
         char *new_content = NULL;
 
-        if (asprintf(&line, "%s|%d|%.2f\n", stock->products[i].name, stock->products[i].amount,
-                     stock->products[i].weight) < 0 || line == NULL) {
+        if (asprintf(&line, "%s|%d|%.2f\n", stock->products[i].name, stock->products[i].amount, stock->products[i].weight) < 0 || line == NULL) {
             free(content);
             free(file_name);
             free(file_path);
@@ -291,8 +286,7 @@ bool transfer_parse_catalog_file(const char *path, Product **products_out, size_
         name = strtok(copy, "|");
         amount_text = strtok(NULL, "|");
         weight_text = strtok(NULL, "|");
-        if (name != NULL && amount_text != NULL && weight_text != NULL &&
-            utils_parse_int(amount_text, &amount) && utils_parse_float(weight_text, &weight)) {
+        if (name != NULL && amount_text != NULL && weight_text != NULL && utils_parse_int(amount_text, &amount) && utils_parse_float(weight_text, &weight)) {
             if (!transfer_append_product(&products, &count, name, amount, weight)) {
                 free(copy);
                 free(content);

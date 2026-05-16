@@ -136,8 +136,7 @@ bool config_load(const char *path, CitadelConfig *config) {
 
     free(buffer);
 
-    if (field_index < 5 || !routes_started || config->realm_name == NULL || config->workdir == NULL ||
-        config->ip == NULL) {
+    if (field_index < 5 || !routes_started || config->realm_name == NULL || config->workdir == NULL || config->ip == NULL) {
         return false;
     }
 

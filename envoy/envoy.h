@@ -37,8 +37,7 @@ void envoy_manager_init_empty(EnvoyManager *manager);
 bool envoy_manager_init(EnvoyManager *manager, int count);
 void envoy_manager_shutdown(EnvoyManager *manager);
 
-int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission,
-                         const char *realm, const char *arg);
+int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg);
 bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success);
 int envoy_manager_find_busy(EnvoyManager *manager, EnvoyMissionType mission, const char *realm);
 bool envoy_manager_has_free(EnvoyManager *manager);

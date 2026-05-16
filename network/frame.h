@@ -35,8 +35,7 @@ typedef struct {
 } NetworkFrame;
 
 void frame_init(NetworkFrame *frame);
-bool frame_set(NetworkFrame *frame, uint8_t type, const char *origin, const char *destination,
-               const void *data, size_t data_length);
+bool frame_set(NetworkFrame *frame, uint8_t type, const char *origin, const char *destination, const void *data, size_t data_length);
 void frame_serialize(const NetworkFrame *frame, unsigned char buffer[CITADEL_FRAME_SIZE]);
 bool frame_deserialize(const unsigned char buffer[CITADEL_FRAME_SIZE], NetworkFrame *frame);
 uint16_t frame_calculate_checksum(const NetworkFrame *frame);

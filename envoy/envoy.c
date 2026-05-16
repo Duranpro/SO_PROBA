@@ -143,10 +143,18 @@ static bool envoy_spawn_one(EnvoyProcess *envoy) {
     }
 
     if (pipe(parent_to_child) != 0 || pipe(child_to_parent) != 0) {
-        if (parent_to_child[0] >= 0) close(parent_to_child[0]);
-        if (parent_to_child[1] >= 0) close(parent_to_child[1]);
-        if (child_to_parent[0] >= 0) close(child_to_parent[0]);
-        if (child_to_parent[1] >= 0) close(child_to_parent[1]);
+        if (parent_to_child[0] >= 0) {
+            close(parent_to_child[0]);
+        }
+        if (parent_to_child[1] >= 0) {
+            close(parent_to_child[1]);
+        }
+        if (child_to_parent[0] >= 0) {
+            close(child_to_parent[0]);
+        }
+        if (child_to_parent[1] >= 0) {
+            close(child_to_parent[1]);
+        }
         return false;
     }
 
@@ -289,8 +297,7 @@ void envoy_manager_shutdown(EnvoyManager *manager) {
     pthread_mutex_destroy(&manager->lock);
 }
 
-int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission,
-                         const char *realm, const char *arg) {
+int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg) {
     int i = 0;
 
     if (manager == NULL || !manager->initialized || mission == ENVOY_MISSION_NONE) {
@@ -300,6 +307,9 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission,
     pthread_mutex_lock(&manager->lock);
     for (i = 0; i < manager->count; ++i) {
         EnvoyProcess *envoy = &manager->envoys[i];
+        const char *safe_realm = "";
+        const char *safe_arg = "";
+
         if (!envoy->alive || envoy->busy) {
             continue;
         }
@@ -310,9 +320,15 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission,
         envoy->mission = mission;
         envoy->last_success = true;
         envoy->assigned_at = time(NULL);
-        strncpy(envoy->realm, realm != NULL ? realm : "", sizeof(envoy->realm) - 1);
+        if (realm != NULL) {
+            safe_realm = realm;
+        }
+        if (arg != NULL) {
+            safe_arg = arg;
+        }
+        strncpy(envoy->realm, safe_realm, sizeof(envoy->realm) - 1);
         envoy->realm[sizeof(envoy->realm) - 1] = '\0';
-        strncpy(envoy->arg, arg != NULL ? arg : "", sizeof(envoy->arg) - 1);
+        strncpy(envoy->arg, safe_arg, sizeof(envoy->arg) - 1);
         envoy->arg[sizeof(envoy->arg) - 1] = '\0';
 
 #ifndef _WIN32
@@ -357,7 +373,10 @@ bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success
         memset(&message, 0, sizeof(message));
         message.kind = ENVOY_CMD_COMPLETE;
         message.mission = (uint8_t) manager->envoys[envoy_index].mission;
-        message.success = success ? 1 : 0;
+        message.success = 0;
+        if (success) {
+            message.success = 1;
+        }
         strncpy(message.realm, manager->envoys[envoy_index].realm, sizeof(message.realm) - 1);
         strncpy(message.arg, manager->envoys[envoy_index].arg, sizeof(message.arg) - 1);
         if (!envoy_pipe_write_full(manager->envoys[envoy_index].to_child_fd, &message, sizeof(message))) {
@@ -465,6 +484,7 @@ void envoy_manager_print_status(EnvoyManager *manager) {
     for (i = 0; i < manager->count; ++i) {
         char *line = NULL;
         EnvoyProcess *envoy = &manager->envoys[i];
+        const char *display_realm = "-";
 
         if (!envoy->busy) {
             if (asprintf(&line, "- Envoy %d: FREE\n", i + 1) >= 0 && line != NULL) {
@@ -474,10 +494,11 @@ void envoy_manager_print_status(EnvoyManager *manager) {
             continue;
         }
 
-        if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)\n",
-                     i + 1,
-                     envoy_mission_text(envoy->mission),
-                     envoy->realm[0] != '\0' ? envoy->realm : "-") >= 0 && line != NULL) {
+        if (envoy->realm[0] != '\0') {
+            display_realm = envoy->realm;
+        }
+
+        if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)\n", i + 1, envoy_mission_text(envoy->mission), display_realm) >= 0 && line != NULL) {
             utils_print(line);
             free(line);
         }

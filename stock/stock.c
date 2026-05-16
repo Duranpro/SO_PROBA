@@ -288,10 +288,7 @@ void stock_print_local(const Stock *stock) {
     utils_println("Item | Value (Gold) | Weight (Stone)");
     for (i = 0; i < stock->count; ++i) {
         char *line = NULL;
-        int written = asprintf(&line, "%s | %d | %.1f\n",
-                               stock->products[i].name,
-                               stock->products[i].amount,
-                               stock->products[i].weight);
+        int written = asprintf(&line, "%s | %d | %.1f\n", stock->products[i].name, stock->products[i].amount, stock->products[i].weight);
         if (written >= 0 && line != NULL) {
             utils_print(line);
             free(line);

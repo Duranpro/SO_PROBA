@@ -43,8 +43,7 @@ static void commands_print_envoys_busy_message(void) {
     utils_println("All envoys are occupied. Your command must wait.");
 }
 
-static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType mission,
-                                 const char *realm, const char *arg) {
+static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType mission, const char *realm, const char *arg) {
     int envoy_index = -1;
 
     if (context == NULL) {
@@ -128,14 +127,12 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             commands_print_incomplete("PLEDGE RESPOND is incomplete. Use PLEDGE RESPOND <REALM> ACCEPT or PLEDGE RESPOND <REALM> REJECT.");
             return true;
         }
-        if (count == 4 &&
-            (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
+        if (count == 4 && (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
             int envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE_RESPOND, tokens[2], tokens[3]);
             if (envoy_index < 0) {
                 return true;
             }
-            if (!network_send_pledge_response(&context->network, tokens[2],
-                                              utils_equals_ignore_case(tokens[3], "ACCEPT"))) {
+            if (!network_send_pledge_response(&context->network, tokens[2], utils_equals_ignore_case(tokens[3], "ACCEPT"))) {
                 envoy_manager_complete(&context->envoys, envoy_index, false);
                 utils_println("There is no pending pledge from that realm.");
             } else {
@@ -202,7 +199,6 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             commands_print_trade_authorization_error(tokens[2]);
             return true;
         }
-        utils_println("Direct route available (allied). No hops required.");
         trade_run_local(&context->config, &context->stock, &context->network, &context->envoys, tokens[2]);
         return true;
     }

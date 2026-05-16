@@ -8,8 +8,7 @@ void frame_init(NetworkFrame *frame) {
     memset(frame, 0, sizeof(*frame));
 }
 
-bool frame_set(NetworkFrame *frame, uint8_t type, const char *origin, const char *destination,
-               const void *data, size_t data_length) {
+bool frame_set(NetworkFrame *frame, uint8_t type, const char *origin, const char *destination, const void *data, size_t data_length) {
     if (frame == NULL || origin == NULL || destination == NULL || data_length > CITADEL_FRAME_DATA_SIZE) {
         return false;
     }

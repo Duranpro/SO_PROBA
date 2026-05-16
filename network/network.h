@@ -90,8 +90,7 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
 bool network_send_pledge_response(NetworkContext *network, const char *realm_name, bool accepted);
 bool network_request_remote_products(NetworkContext *network, const char *realm_name);
 bool network_send_trade_offer(NetworkContext *network, const char *realm_name, const char *file_path);
-bool network_get_remote_products_copy(NetworkContext *network, const char *realm_name,
-                                      Product **products_out, size_t *count_out);
+bool network_get_remote_products_copy(NetworkContext *network, const char *realm_name, Product **products_out, size_t *count_out);
 bool network_send_ping(NetworkContext *network, const char *realm_name);
 bool network_get_alliance_status(NetworkContext *network, const char *realm_name, AllianceStatus *status_out);
 bool network_is_waiting_products(NetworkContext *network, const char *realm_name, bool *waiting_out);

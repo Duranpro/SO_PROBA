@@ -124,8 +124,7 @@ static bool trade_remove_item(TradeSession *session, const char *product_name, i
             if (session->items[i].amount <= amount) {
                 free(session->items[i].name);
                 if (i + 1 < session->count) {
-                    memmove(&session->items[i], &session->items[i + 1],
-                            sizeof(TradeItem) * (session->count - i - 1));
+                    memmove(&session->items[i], &session->items[i + 1], sizeof(TradeItem) * (session->count - i - 1));
                 }
                 session->count--;
             } else {
@@ -161,8 +160,7 @@ static bool trade_append_text(char **content, const char *suffix) {
     return true;
 }
 
-static bool trade_write_shopping_list(const TradeSession *session, char **file_path_out,
-                                      char **file_name_out, size_t *file_size_out) {
+static bool trade_write_shopping_list(const TradeSession *session, char **file_path_out, char **file_name_out, size_t *file_size_out) {
     char *file_name = NULL;
     char *path = NULL;
     char *content = NULL;
@@ -188,9 +186,7 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
         return false;
     }
 
-    written = asprintf(&content, "Requester: %s\nTarget: %s\nItems:\n",
-                       session->config->realm_name,
-                       session->target_realm);
+    written = asprintf(&content, "Requester: %s\nTarget: %s\nItems:\n", session->config->realm_name, session->target_realm);
     if (written < 0 || content == NULL) {
         free(path);
         return false;
@@ -246,7 +242,12 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
     }
 
     if (file_name_out != NULL) {
-        *file_name_out = utils_strdup_safe(strrchr(path, '/') != NULL ? strrchr(path, '/') + 1 : path);
+        const char *base_name = path;
+        char *last_separator = strrchr(path, '/');
+        if (last_separator != NULL) {
+            base_name = last_separator + 1;
+        }
+        *file_name_out = utils_strdup_safe(base_name);
     }
 
     if (file_size_out != NULL) {
@@ -262,17 +263,14 @@ static void trade_help(const char *command) {
     char *line = NULL;
     int written = 0;
 
-    written = asprintf(&line,
-                       "Incomplete %s command. Use: add <product> <amount>, remove <product> <amount>, send or cancel.",
-                       command);
+    written = asprintf(&line, "Incomplete %s command. Use: add <product> <amount>, remove <product> <amount>, send or cancel.", command);
     if (written >= 0 && line != NULL) {
         utils_println(line);
         free(line);
     }
 }
 
-bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network,
-                     EnvoyManager *envoys, const char *target_realm) {
+bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network, EnvoyManager *envoys, const char *target_realm) {
     TradeSession session;
     bool keep_running = true;
     char *line = NULL;
@@ -297,17 +295,17 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
         }
     }
 
-    if (network != NULL &&
-        network_get_remote_products_copy(network, session.target_realm,
-                                         &session.available_products, &session.available_count)) {
+    if (network != NULL && network_get_remote_products_copy(network, session.target_realm, &session.available_products, &session.available_count)) {
         size_t i = 0;
         char *line2 = utils_strdup_safe("Available products: ");
         if (line2 != NULL) {
             for (i = 0; i < session.available_count; ++i) {
                 char *new_line = NULL;
-                const char *separator = (i + 1 < session.available_count) ? ", " : ".";
-                if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].name, separator) >= 0 &&
-                    new_line != NULL) {
+                const char *separator = ".";
+                if (i + 1 < session.available_count) {
+                    separator = ", ";
+                }
+                if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].name, separator) >= 0 && new_line != NULL) {
                     free(line2);
                     line2 = new_line;
                 }
@@ -372,16 +370,14 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
                     int written = 0;
 
                     if (session.envoys != NULL) {
-                        envoy_index = envoy_manager_assign(session.envoys, ENVOY_MISSION_TRADE,
-                                                           session.target_realm, file_path);
+                        envoy_index = envoy_manager_assign(session.envoys, ENVOY_MISSION_TRADE, session.target_realm, file_path);
                     }
 
                     if (envoy_index < 0) {
                         utils_println("No free Envoys available right now.");
                         free(file_path);
                         free(file_name);
-                    } else if (session.network != NULL &&
-                               !network_send_trade_offer(session.network, session.target_realm, file_path)) {
+                    } else if (session.network != NULL && !network_send_trade_offer(session.network, session.target_realm, file_path)) {
                         envoy_manager_complete(session.envoys, envoy_index, false);
                         utils_println("Trade list saved locally, but the ally could not be notified.");
                         free(file_path);

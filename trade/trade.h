@@ -7,7 +7,6 @@
 #include "../stock/stock.h"
 #include "../utils/system.h"
 
-bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network,
-                     EnvoyManager *envoys, const char *target_realm);
+bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network, EnvoyManager *envoys, const char *target_realm);
 
 #endif
