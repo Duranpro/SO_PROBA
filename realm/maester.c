@@ -4,6 +4,7 @@
 #include "../utils/utils.h"
 
 static volatile sig_atomic_t g_stop_requested = 0;
+static volatile sig_atomic_t g_sigchld_received = 0;
 
 typedef struct {
     char *config_path;
@@ -11,8 +12,11 @@ typedef struct {
 } LaunchPaths;
 
 static void maester_handle_signal(int signal_number) {
-    (void) signal_number;
-    g_stop_requested = 1;
+    if (signal_number == SIGINT) {
+        g_stop_requested = 1;
+    } else if (signal_number == SIGCHLD) {
+        g_sigchld_received = 1;
+    }
 }
 
 void maester_context_init(MaesterContext *context) {
@@ -39,11 +43,27 @@ void maester_context_destroy(MaesterContext *context) {
 }
 
 static bool maester_install_signals(void) {
-    if (signal(SIGINT, maester_handle_signal) == SIG_ERR) {
+    struct sigaction action;
+
+    memset(&action, 0, sizeof(action));
+    sigemptyset(&action.sa_mask);
+    action.sa_handler = maester_handle_signal;
+
+    if (sigaction(SIGINT, &action, NULL) != 0) {
+        return false;
+    }
+
+    if (sigaction(SIGCHLD, &action, NULL) != 0) {
         return false;
     }
 
     return true;
+}
+
+bool maester_consume_sigchld(void) {
+    bool received = g_sigchld_received != 0;
+    g_sigchld_received = 0;
+    return received;
 }
 
 static void maester_print_usage(const char *program_name) {

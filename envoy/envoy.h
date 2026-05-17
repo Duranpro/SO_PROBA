@@ -13,12 +13,10 @@ typedef enum {
 
 typedef struct {
     pid_t pid;
-    int to_child_fd;
     int from_child_fd;
     bool alive;
     bool busy;
     bool started;
-    bool completion_sent;
     EnvoyMissionType mission;
     char realm[64];
     char arg[160];
@@ -42,6 +40,7 @@ bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success
 int envoy_manager_find_busy(EnvoyManager *manager, EnvoyMissionType mission, const char *realm);
 bool envoy_manager_has_free(EnvoyManager *manager);
 void envoy_manager_poll_events(EnvoyManager *manager);
+void envoy_manager_reap_children(EnvoyManager *manager);
 void envoy_manager_print_status(EnvoyManager *manager);
 
 const char *envoy_mission_text(EnvoyMissionType mission);

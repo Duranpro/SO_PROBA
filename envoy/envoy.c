@@ -3,12 +3,7 @@
 #include "../utils/utils.h"
 
 typedef enum {
-    ENVOY_CMD_NONE = 0,
-    ENVOY_CMD_ASSIGN = 1,
-    ENVOY_CMD_COMPLETE = 2,
-    ENVOY_CMD_SHUTDOWN = 3,
-    ENVOY_EVT_STARTED = 11,
-    ENVOY_EVT_FINISHED = 12
+    ENVOY_EVT_STARTED = 11
 } EnvoyIpcKind;
 
 typedef struct {
@@ -84,54 +79,29 @@ void envoy_manager_init_empty(EnvoyManager *manager) {
     memset(manager, 0, sizeof(*manager));
 }
 
-static void envoy_child_loop(int read_fd, int write_fd) {
-    bool running = true;
-    bool mission_active = false;
-    EnvoyIpcMessage incoming;
+static void envoy_child_loop(int write_fd, EnvoyMissionType mission, const char *realm, const char *arg) {
     EnvoyIpcMessage outgoing;
 
-    while (running) {
-        ssize_t rc = envoy_pipe_read_full(read_fd, &incoming, sizeof(incoming));
-        if (rc <= 0) {
-            break;
-        }
+    memset(&outgoing, 0, sizeof(outgoing));
+    outgoing.kind = ENVOY_EVT_STARTED;
+    outgoing.mission = (uint8_t) mission;
+    if (realm != NULL) {
+        strncpy(outgoing.realm, realm, sizeof(outgoing.realm) - 1);
+    }
+    if (arg != NULL) {
+        strncpy(outgoing.arg, arg, sizeof(outgoing.arg) - 1);
+    }
+    envoy_pipe_write_full(write_fd, &outgoing, sizeof(outgoing));
 
-        memset(&outgoing, 0, sizeof(outgoing));
-        switch (incoming.kind) {
-            case ENVOY_CMD_ASSIGN:
-                mission_active = true;
-                outgoing.kind = ENVOY_EVT_STARTED;
-                outgoing.mission = incoming.mission;
-                strncpy(outgoing.realm, incoming.realm, sizeof(outgoing.realm) - 1);
-                strncpy(outgoing.arg, incoming.arg, sizeof(outgoing.arg) - 1);
-                envoy_pipe_write_full(write_fd, &outgoing, sizeof(outgoing));
-                break;
-            case ENVOY_CMD_COMPLETE:
-                if (mission_active) {
-                    mission_active = false;
-                    outgoing.kind = ENVOY_EVT_FINISHED;
-                    outgoing.mission = incoming.mission;
-                    outgoing.success = incoming.success;
-                    strncpy(outgoing.realm, incoming.realm, sizeof(outgoing.realm) - 1);
-                    strncpy(outgoing.arg, incoming.arg, sizeof(outgoing.arg) - 1);
-                    envoy_pipe_write_full(write_fd, &outgoing, sizeof(outgoing));
-                }
-                break;
-            case ENVOY_CMD_SHUTDOWN:
-                running = false;
-                break;
-            default:
-                break;
-        }
+    for (;;) {
+        pause();
     }
 
-    close(read_fd);
     close(write_fd);
     _exit(0);
 }
 
-static bool envoy_spawn_one(EnvoyProcess *envoy) {
-    int parent_to_child[2] = {-1, -1};
+static bool envoy_spawn_one(EnvoyProcess *envoy, EnvoyMissionType mission, const char *realm, const char *arg) {
     int child_to_parent[2] = {-1, -1};
     pid_t pid = 0;
 
@@ -139,13 +109,7 @@ static bool envoy_spawn_one(EnvoyProcess *envoy) {
         return false;
     }
 
-    if (pipe(parent_to_child) != 0 || pipe(child_to_parent) != 0) {
-        if (parent_to_child[0] >= 0) {
-            close(parent_to_child[0]);
-        }
-        if (parent_to_child[1] >= 0) {
-            close(parent_to_child[1]);
-        }
+    if (pipe(child_to_parent) != 0) {
         if (child_to_parent[0] >= 0) {
             close(child_to_parent[0]);
         }
@@ -157,29 +121,23 @@ static bool envoy_spawn_one(EnvoyProcess *envoy) {
 
     pid = fork();
     if (pid < 0) {
-        close(parent_to_child[0]);
-        close(parent_to_child[1]);
         close(child_to_parent[0]);
         close(child_to_parent[1]);
         return false;
     }
 
     if (pid == 0) {
-        close(parent_to_child[1]);
         close(child_to_parent[0]);
-        envoy_child_loop(parent_to_child[0], child_to_parent[1]);
+        envoy_child_loop(child_to_parent[1], mission, realm, arg);
     }
 
-    close(parent_to_child[0]);
     close(child_to_parent[1]);
 
     envoy->pid = pid;
-    envoy->to_child_fd = parent_to_child[1];
     envoy->from_child_fd = child_to_parent[0];
     envoy->alive = true;
     envoy->busy = false;
     envoy->started = false;
-    envoy->completion_sent = false;
     envoy->mission = ENVOY_MISSION_NONE;
     envoy->realm[0] = '\0';
     envoy->arg[0] = '\0';
@@ -191,8 +149,6 @@ static bool envoy_spawn_one(EnvoyProcess *envoy) {
 }
 
 bool envoy_manager_init(EnvoyManager *manager, int count) {
-    int i = 0;
-
     if (manager == NULL || count < 0) {
         return false;
     }
@@ -214,14 +170,6 @@ bool envoy_manager_init(EnvoyManager *manager, int count) {
         return false;
     }
 
-    for (i = 0; i < count; ++i) {
-        if (!envoy_spawn_one(&manager->envoys[i])) {
-            manager->count = i;
-            envoy_manager_shutdown(manager);
-            return false;
-        }
-    }
-
     manager->initialized = true;
     return true;
 }
@@ -233,7 +181,6 @@ static void envoy_reset_process(EnvoyProcess *envoy) {
 
     envoy->busy = false;
     envoy->started = false;
-    envoy->completion_sent = false;
     envoy->mission = ENVOY_MISSION_NONE;
     envoy->realm[0] = '\0';
     envoy->arg[0] = '\0';
@@ -248,18 +195,17 @@ void envoy_manager_shutdown(EnvoyManager *manager) {
     pthread_mutex_lock(&manager->lock);
     int i = 0;
     for (i = 0; i < manager->count; ++i) {
-        EnvoyIpcMessage message;
         if (!manager->envoys[i].alive) {
             continue;
         }
 
-        memset(&message, 0, sizeof(message));
-        message.kind = ENVOY_CMD_SHUTDOWN;
-        envoy_pipe_write_full(manager->envoys[i].to_child_fd, &message, sizeof(message));
-        close(manager->envoys[i].to_child_fd);
-        manager->envoys[i].to_child_fd = -1;
+        kill(manager->envoys[i].pid, SIGTERM);
     }
+    pthread_mutex_unlock(&manager->lock);
 
+    envoy_manager_reap_children(manager);
+
+    pthread_mutex_lock(&manager->lock);
     for (i = 0; i < manager->count; ++i) {
         if (!manager->envoys[i].alive) {
             continue;
@@ -293,40 +239,30 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const 
         const char *safe_realm = "";
         const char *safe_arg = "";
 
-        if (!envoy->alive || envoy->busy) {
+        if (envoy->busy) {
             continue;
         }
 
-        envoy->busy = true;
-        envoy->started = false;
-        envoy->completion_sent = false;
-        envoy->mission = mission;
-        envoy->last_success = true;
-        envoy->assigned_at = time(NULL);
         if (realm != NULL) {
             safe_realm = realm;
         }
         if (arg != NULL) {
             safe_arg = arg;
         }
+        if (!envoy_spawn_one(envoy, mission, safe_realm, safe_arg)) {
+            pthread_mutex_unlock(&manager->lock);
+            return -1;
+        }
+
+        envoy->busy = true;
+        envoy->started = false;
+        envoy->mission = mission;
+        envoy->last_success = true;
+        envoy->assigned_at = time(NULL);
         strncpy(envoy->realm, safe_realm, sizeof(envoy->realm) - 1);
         envoy->realm[sizeof(envoy->realm) - 1] = '\0';
         strncpy(envoy->arg, safe_arg, sizeof(envoy->arg) - 1);
         envoy->arg[sizeof(envoy->arg) - 1] = '\0';
-
-        {
-            EnvoyIpcMessage message;
-            memset(&message, 0, sizeof(message));
-            message.kind = ENVOY_CMD_ASSIGN;
-            message.mission = (uint8_t) mission;
-            strncpy(message.realm, envoy->realm, sizeof(message.realm) - 1);
-            strncpy(message.arg, envoy->arg, sizeof(message.arg) - 1);
-            if (!envoy_pipe_write_full(envoy->to_child_fd, &message, sizeof(message))) {
-                envoy_reset_process(envoy);
-                pthread_mutex_unlock(&manager->lock);
-                return -1;
-            }
-        }
         pthread_mutex_unlock(&manager->lock);
         return i;
     }
@@ -340,32 +276,13 @@ bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success
     }
 
     pthread_mutex_lock(&manager->lock);
-    if (!manager->envoys[envoy_index].busy || manager->envoys[envoy_index].completion_sent) {
+    if (!manager->envoys[envoy_index].busy || !manager->envoys[envoy_index].alive) {
         pthread_mutex_unlock(&manager->lock);
         return false;
     }
 
     manager->envoys[envoy_index].last_success = success;
-    manager->envoys[envoy_index].completion_sent = true;
-
-    {
-        EnvoyIpcMessage message;
-        memset(&message, 0, sizeof(message));
-        message.kind = ENVOY_CMD_COMPLETE;
-        message.mission = (uint8_t) manager->envoys[envoy_index].mission;
-        message.success = 0;
-        if (success) {
-            message.success = 1;
-        }
-        strncpy(message.realm, manager->envoys[envoy_index].realm, sizeof(message.realm) - 1);
-        strncpy(message.arg, manager->envoys[envoy_index].arg, sizeof(message.arg) - 1);
-        if (!envoy_pipe_write_full(manager->envoys[envoy_index].to_child_fd, &message, sizeof(message))) {
-            envoy_reset_process(&manager->envoys[envoy_index]);
-            pthread_mutex_unlock(&manager->lock);
-            return false;
-        }
-    }
-
+    kill(manager->envoys[envoy_index].pid, SIGTERM);
     pthread_mutex_unlock(&manager->lock);
     return true;
 }
@@ -399,7 +316,7 @@ bool envoy_manager_has_free(EnvoyManager *manager) {
 
     pthread_mutex_lock(&manager->lock);
     for (i = 0; i < manager->count; ++i) {
-        if (manager->envoys[i].alive && !manager->envoys[i].busy) {
+        if (!manager->envoys[i].busy) {
             free_found = true;
             break;
         }
@@ -430,17 +347,46 @@ void envoy_manager_poll_events(EnvoyManager *manager) {
                 break;
             }
             if (rc <= 0) {
-                envoy->alive = false;
-                envoy_reset_process(envoy);
                 break;
             }
 
             if (message.kind == ENVOY_EVT_STARTED) {
                 envoy->started = true;
-            } else if (message.kind == ENVOY_EVT_FINISHED) {
-                envoy_reset_process(envoy);
             }
         }
+    }
+    pthread_mutex_unlock(&manager->lock);
+}
+
+void envoy_manager_reap_children(EnvoyManager *manager) {
+    int i = 0;
+
+    if (manager == NULL || !manager->initialized) {
+        return;
+    }
+
+    pthread_mutex_lock(&manager->lock);
+    for (i = 0; i < manager->count; ++i) {
+        int status = 0;
+        pid_t rc = 0;
+        EnvoyProcess *envoy = &manager->envoys[i];
+
+        if (!envoy->alive || envoy->pid <= 0) {
+            continue;
+        }
+
+        rc = waitpid(envoy->pid, &status, WNOHANG);
+        if (rc <= 0) {
+            continue;
+        }
+
+        if (envoy->from_child_fd >= 0) {
+            close(envoy->from_child_fd);
+            envoy->from_child_fd = -1;
+        }
+        envoy->alive = false;
+        envoy->pid = 0;
+        envoy_reset_process(envoy);
     }
     pthread_mutex_unlock(&manager->lock);
 }

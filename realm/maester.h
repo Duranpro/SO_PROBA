@@ -16,5 +16,6 @@ typedef struct {
 
 void maester_context_init(MaesterContext *context);
 void maester_context_destroy(MaesterContext *context);
+bool maester_consume_sigchld(void);
 
 #endif

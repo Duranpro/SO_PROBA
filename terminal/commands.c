@@ -296,6 +296,10 @@ void commands_poll_background(MaesterContext *context) {
         return;
     }
 
+    if (maester_consume_sigchld()) {
+        envoy_manager_reap_children(&context->envoys);
+    }
+
     envoy_manager_poll_events(&context->envoys);
 
     for (i = 0; i < context->config.route_count; ++i) {
