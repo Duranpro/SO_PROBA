@@ -50,7 +50,7 @@ static int commands_assign_envoy(MaesterContext *context, EnvoyMissionType missi
         return -1;
     }
 
-    envoy_index = envoy_manager_assign(&context->envoys, mission, realm, arg);
+    envoy_index = envoy_manager_assign(&context->envoys, mission, realm, arg, network_run_envoy_action, &context->network);
     if (envoy_index < 0) {
         commands_print_envoys_busy_message();
         return -1;
@@ -89,13 +89,14 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
                 commands_print_trade_authorization_error(tokens[2]);
                 return true;
             }
-            envoy_index = commands_assign_envoy(context, ENVOY_MISSION_LIST_PRODUCTS, tokens[2], NULL);
-            if (envoy_index < 0) {
+            if (!network_prepare_remote_products(&context->network, tokens[2])) {
+                utils_println("Could not contact the allied realm.");
                 return true;
             }
-            if (!network_request_remote_products(&context->network, tokens[2])) {
-                envoy_manager_complete(&context->envoys, envoy_index, false);
-                utils_println("Could not contact the allied realm.");
+            envoy_index = commands_assign_envoy(context, ENVOY_MISSION_LIST_PRODUCTS, tokens[2], NULL);
+            if (envoy_index < 0) {
+                network_abort_remote_products(&context->network, tokens[2]);
+                return true;
             }
             return true;
         }
@@ -128,15 +129,13 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             return true;
         }
         if (count == 4 && (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
+            if (!network_prepare_pledge_response(&context->network, tokens[2], utils_equals_ignore_case(tokens[3], "ACCEPT"))) {
+                utils_println("There is no pending pledge from that realm.");
+                return true;
+            }
             int envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE_RESPOND, tokens[2], tokens[3]);
             if (envoy_index < 0) {
                 return true;
-            }
-            if (!network_send_pledge_response(&context->network, tokens[2], utils_equals_ignore_case(tokens[3], "ACCEPT"))) {
-                envoy_manager_complete(&context->envoys, envoy_index, false);
-                utils_println("There is no pending pledge from that realm.");
-            } else {
-                envoy_manager_complete(&context->envoys, envoy_index, true);
             }
             return true;
         }
@@ -155,13 +154,14 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             utils_println("No such realm exists. The pledge is hereby withdrawn.");
             return true;
         }
-        envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2]);
-        if (envoy_index < 0) {
+        if (!network_prepare_pledge(&context->network, tokens[1], tokens[2])) {
+            utils_println("No such realm exists. The pledge is hereby withdrawn.");
             return true;
         }
-        if (!network_send_pledge(&context->network, tokens[1], tokens[2])) {
-            envoy_manager_complete(&context->envoys, envoy_index, false);
-            utils_println("No such realm exists. The pledge is hereby withdrawn.");
+        envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2]);
+        if (envoy_index < 0) {
+            network_abort_pledge(&context->network, tokens[1]);
+            return true;
         }
         return true;
     }
@@ -296,11 +296,68 @@ void commands_poll_background(MaesterContext *context) {
         return;
     }
 
+    envoy_manager_poll_events(&context->envoys);
+
+    while (true) {
+        int envoy_index = -1;
+        EnvoyMissionType mission = ENVOY_MISSION_NONE;
+        char realm[64];
+        char arg[160];
+        bool success = false;
+
+        memset(realm, 0, sizeof(realm));
+        memset(arg, 0, sizeof(arg));
+        if (!envoy_manager_consume_launch_result(&context->envoys, &envoy_index, &mission,
+                                                 realm, sizeof(realm), arg, sizeof(arg), &success)) {
+            break;
+        }
+
+        if (!success) {
+            if (mission == ENVOY_MISSION_PLEDGE) {
+                network_abort_pledge(&context->network, realm);
+                utils_println("No such realm exists. The pledge is hereby withdrawn.");
+            } else if (mission == ENVOY_MISSION_LIST_PRODUCTS) {
+                network_abort_remote_products(&context->network, realm);
+                utils_println("Could not contact the allied realm.");
+            } else if (mission == ENVOY_MISSION_PLEDGE_RESPOND) {
+                utils_println("Could not send the pledge response.");
+            } else if (mission == ENVOY_MISSION_TRADE) {
+                network_abort_trade_offer(&context->network, realm);
+                utils_println("Trade list saved locally, but the ally could not be notified.");
+            }
+            continue;
+        }
+
+        if (mission == ENVOY_MISSION_PLEDGE) {
+            char *line = NULL;
+            if (asprintf(&line, "Pledge sent to %s.", realm) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
+        } else if (mission == ENVOY_MISSION_LIST_PRODUCTS) {
+            utils_println("Remote product request sent.");
+        } else if (mission == ENVOY_MISSION_PLEDGE_RESPOND) {
+            bool accepted = utils_equals_ignore_case(arg, "ACCEPT");
+            char *line = NULL;
+            network_commit_pledge_response(&context->network, realm, accepted);
+            if (asprintf(&line, "Alliance with %s %s.", realm,
+                         accepted ? "established" : "rejected") >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
+        } else if (mission == ENVOY_MISSION_TRADE) {
+            char *line = NULL;
+            if (asprintf(&line, "Trade list sent to %s.", realm) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
+        }
+        (void) envoy_index;
+    }
+
     if (maester_consume_sigchld()) {
         envoy_manager_reap_children(&context->envoys);
     }
-
-    envoy_manager_poll_events(&context->envoys);
 
     for (i = 0; i < context->config.route_count; ++i) {
         const char *realm = context->config.routes[i].realm_name;

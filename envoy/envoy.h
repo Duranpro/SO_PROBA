@@ -11,12 +11,17 @@ typedef enum {
     ENVOY_MISSION_TRADE
 } EnvoyMissionType;
 
+typedef bool (*EnvoyActionRunner)(EnvoyMissionType mission, const char *realm, const char *arg, void *user_data);
+
 typedef struct {
     pid_t pid;
     int from_child_fd;
     bool alive;
     bool busy;
     bool started;
+    bool launch_reported;
+    bool launch_success;
+    bool launch_handled;
     EnvoyMissionType mission;
     char realm[64];
     char arg[160];
@@ -35,12 +40,16 @@ void envoy_manager_init_empty(EnvoyManager *manager);
 bool envoy_manager_init(EnvoyManager *manager, int count);
 void envoy_manager_shutdown(EnvoyManager *manager);
 
-int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg);
+int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg,
+                         EnvoyActionRunner runner, void *runner_context);
 bool envoy_manager_complete(EnvoyManager *manager, int envoy_index, bool success);
 int envoy_manager_find_busy(EnvoyManager *manager, EnvoyMissionType mission, const char *realm);
 bool envoy_manager_has_free(EnvoyManager *manager);
 void envoy_manager_poll_events(EnvoyManager *manager);
 void envoy_manager_reap_children(EnvoyManager *manager);
+bool envoy_manager_consume_launch_result(EnvoyManager *manager, int *envoy_index_out, EnvoyMissionType *mission_out,
+                                         char *realm_out, size_t realm_out_size, char *arg_out, size_t arg_out_size,
+                                         bool *success_out);
 void envoy_manager_print_status(EnvoyManager *manager);
 
 const char *envoy_mission_text(EnvoyMissionType mission);

@@ -3,7 +3,7 @@
 #include "../utils/utils.h"
 
 typedef enum {
-    ENVOY_EVT_STARTED = 11
+    ENVOY_EVT_DISPATCHED = 11
 } EnvoyIpcKind;
 
 typedef struct {
@@ -79,12 +79,19 @@ void envoy_manager_init_empty(EnvoyManager *manager) {
     memset(manager, 0, sizeof(*manager));
 }
 
-static void envoy_child_loop(int write_fd, EnvoyMissionType mission, const char *realm, const char *arg) {
+static void envoy_child_loop(int write_fd, EnvoyMissionType mission, const char *realm, const char *arg,
+                             EnvoyActionRunner runner, void *runner_context) {
     EnvoyIpcMessage outgoing;
+    bool launched = false;
+
+    if (runner != NULL) {
+        launched = runner(mission, realm, arg, runner_context);
+    }
 
     memset(&outgoing, 0, sizeof(outgoing));
-    outgoing.kind = ENVOY_EVT_STARTED;
+    outgoing.kind = ENVOY_EVT_DISPATCHED;
     outgoing.mission = (uint8_t) mission;
+    outgoing.success = launched ? 1 : 0;
     if (realm != NULL) {
         strncpy(outgoing.realm, realm, sizeof(outgoing.realm) - 1);
     }
@@ -92,6 +99,11 @@ static void envoy_child_loop(int write_fd, EnvoyMissionType mission, const char 
         strncpy(outgoing.arg, arg, sizeof(outgoing.arg) - 1);
     }
     envoy_pipe_write_full(write_fd, &outgoing, sizeof(outgoing));
+
+    if (!launched || mission == ENVOY_MISSION_PLEDGE_RESPOND) {
+        close(write_fd);
+        _exit(launched ? 0 : 1);
+    }
 
     for (;;) {
         pause();
@@ -101,7 +113,8 @@ static void envoy_child_loop(int write_fd, EnvoyMissionType mission, const char 
     _exit(0);
 }
 
-static bool envoy_spawn_one(EnvoyProcess *envoy, EnvoyMissionType mission, const char *realm, const char *arg) {
+static bool envoy_spawn_one(EnvoyProcess *envoy, EnvoyMissionType mission, const char *realm, const char *arg,
+                            EnvoyActionRunner runner, void *runner_context) {
     int child_to_parent[2] = {-1, -1};
     pid_t pid = 0;
 
@@ -128,7 +141,7 @@ static bool envoy_spawn_one(EnvoyProcess *envoy, EnvoyMissionType mission, const
 
     if (pid == 0) {
         close(child_to_parent[0]);
-        envoy_child_loop(child_to_parent[1], mission, realm, arg);
+        envoy_child_loop(child_to_parent[1], mission, realm, arg, runner, runner_context);
     }
 
     close(child_to_parent[1]);
@@ -138,6 +151,9 @@ static bool envoy_spawn_one(EnvoyProcess *envoy, EnvoyMissionType mission, const
     envoy->alive = true;
     envoy->busy = false;
     envoy->started = false;
+    envoy->launch_reported = false;
+    envoy->launch_success = false;
+    envoy->launch_handled = false;
     envoy->mission = ENVOY_MISSION_NONE;
     envoy->realm[0] = '\0';
     envoy->arg[0] = '\0';
@@ -181,6 +197,9 @@ static void envoy_reset_process(EnvoyProcess *envoy) {
 
     envoy->busy = false;
     envoy->started = false;
+    envoy->launch_reported = false;
+    envoy->launch_success = false;
+    envoy->launch_handled = false;
     envoy->mission = ENVOY_MISSION_NONE;
     envoy->realm[0] = '\0';
     envoy->arg[0] = '\0';
@@ -226,7 +245,8 @@ void envoy_manager_shutdown(EnvoyManager *manager) {
     pthread_mutex_destroy(&manager->lock);
 }
 
-int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg) {
+int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg,
+                         EnvoyActionRunner runner, void *runner_context) {
     int i = 0;
 
     if (manager == NULL || !manager->initialized || mission == ENVOY_MISSION_NONE) {
@@ -249,7 +269,7 @@ int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const 
         if (arg != NULL) {
             safe_arg = arg;
         }
-        if (!envoy_spawn_one(envoy, mission, safe_realm, safe_arg)) {
+        if (!envoy_spawn_one(envoy, mission, safe_realm, safe_arg, runner, runner_context)) {
             pthread_mutex_unlock(&manager->lock);
             return -1;
         }
@@ -350,8 +370,11 @@ void envoy_manager_poll_events(EnvoyManager *manager) {
                 break;
             }
 
-            if (message.kind == ENVOY_EVT_STARTED) {
+            if (message.kind == ENVOY_EVT_DISPATCHED) {
                 envoy->started = true;
+                envoy->launch_reported = true;
+                envoy->launch_success = message.success != 0;
+                envoy->launch_handled = false;
             }
         }
     }
@@ -389,6 +412,38 @@ void envoy_manager_reap_children(EnvoyManager *manager) {
         envoy_reset_process(envoy);
     }
     pthread_mutex_unlock(&manager->lock);
+}
+
+bool envoy_manager_consume_launch_result(EnvoyManager *manager, int *envoy_index_out, EnvoyMissionType *mission_out,
+                                         char *realm_out, size_t realm_out_size, char *arg_out, size_t arg_out_size,
+                                         bool *success_out) {
+    int i = 0;
+
+    if (manager == NULL || !manager->initialized || envoy_index_out == NULL || mission_out == NULL ||
+        realm_out == NULL || arg_out == NULL || success_out == NULL || realm_out_size == 0 || arg_out_size == 0) {
+        return false;
+    }
+
+    pthread_mutex_lock(&manager->lock);
+    for (i = 0; i < manager->count; ++i) {
+        EnvoyProcess *envoy = &manager->envoys[i];
+        if (!envoy->launch_reported || envoy->launch_handled) {
+            continue;
+        }
+
+        envoy->launch_handled = true;
+        *envoy_index_out = i;
+        *mission_out = envoy->mission;
+        *success_out = envoy->launch_success;
+        strncpy(realm_out, envoy->realm, realm_out_size - 1);
+        realm_out[realm_out_size - 1] = '\0';
+        strncpy(arg_out, envoy->arg, arg_out_size - 1);
+        arg_out[arg_out_size - 1] = '\0';
+        pthread_mutex_unlock(&manager->lock);
+        return true;
+    }
+    pthread_mutex_unlock(&manager->lock);
+    return false;
 }
 
 void envoy_manager_print_status(EnvoyManager *manager) {

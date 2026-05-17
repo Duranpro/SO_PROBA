@@ -368,22 +368,30 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
                     int envoy_index = -1;
                     char *message = NULL;
                     int written = 0;
+                    bool prepared = false;
 
-                    if (session.envoys != NULL) {
-                        envoy_index = envoy_manager_assign(session.envoys, ENVOY_MISSION_TRADE, session.target_realm, file_path);
+                    if (session.network != NULL) {
+                        prepared = network_prepare_trade_offer(session.network, session.target_realm, file_path);
                     }
 
-                    if (envoy_index < 0) {
-                        utils_println("No free Envoys available right now.");
-                        free(file_path);
-                        free(file_name);
-                    } else if (session.network != NULL && !network_send_trade_offer(session.network, session.target_realm, file_path)) {
-                        envoy_manager_complete(session.envoys, envoy_index, false);
+                    if (!prepared) {
                         utils_println("Trade list saved locally, but the ally could not be notified.");
                         free(file_path);
                         free(file_name);
+                    } else if (session.envoys != NULL) {
+                        envoy_index = envoy_manager_assign(session.envoys, ENVOY_MISSION_TRADE, session.target_realm, file_path,
+                                                           network_run_envoy_action, session.network);
+                    }
+
+                    if (prepared && envoy_index < 0) {
+                        if (session.network != NULL) {
+                            network_abort_trade_offer(session.network, session.target_realm);
+                        }
+                        utils_println("No free Envoys available right now.");
+                        free(file_path);
+                        free(file_name);
                     } else {
-                        written = asprintf(&message, "Trade list sent to %s.\n", session.target_realm);
+                        written = asprintf(&message, "Trade list handed to an envoy bound for %s.\n", session.target_realm);
                         free(file_path);
                         free(file_name);
                         if (written >= 0 && message != NULL) {

@@ -2,6 +2,7 @@
 #define NETWORK_H
 
 #include "../config/config.h"
+#include "../envoy/envoy.h"
 #include "../stock/stock.h"
 #include "../transfer/transfer.h"
 #include "../utils/system.h"
@@ -90,6 +91,15 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
 bool network_send_pledge_response(NetworkContext *network, const char *realm_name, bool accepted);
 bool network_request_remote_products(NetworkContext *network, const char *realm_name);
 bool network_send_trade_offer(NetworkContext *network, const char *realm_name, const char *file_path);
+bool network_prepare_pledge(NetworkContext *network, const char *realm_name, const char *sigil_name);
+void network_abort_pledge(NetworkContext *network, const char *realm_name);
+bool network_prepare_pledge_response(NetworkContext *network, const char *realm_name, bool accepted);
+void network_commit_pledge_response(NetworkContext *network, const char *realm_name, bool accepted);
+bool network_prepare_remote_products(NetworkContext *network, const char *realm_name);
+void network_abort_remote_products(NetworkContext *network, const char *realm_name);
+bool network_prepare_trade_offer(NetworkContext *network, const char *realm_name, const char *file_path);
+void network_abort_trade_offer(NetworkContext *network, const char *realm_name);
+bool network_run_envoy_action(EnvoyMissionType mission, const char *realm, const char *arg, void *user_data);
 bool network_get_remote_products_copy(NetworkContext *network, const char *realm_name, Product **products_out, size_t *count_out);
 bool network_send_ping(NetworkContext *network, const char *realm_name);
 bool network_get_alliance_status(NetworkContext *network, const char *realm_name, AllianceStatus *status_out);
