@@ -32,7 +32,8 @@ typedef struct {
     AllianceStatus status;
     char *known_endpoint;
     char *pending_origin_endpoint;
-    time_t deadline;
+    bool waiting_pledge_response_ack;
+    bool pending_pledge_accept;
     bool waiting_products;
     bool waiting_trade_ack;
     bool sigil_verified;

@@ -337,11 +337,8 @@ void commands_poll_background(MaesterContext *context) {
         } else if (mission == ENVOY_MISSION_LIST_PRODUCTS) {
             utils_println("Remote product request sent.");
         } else if (mission == ENVOY_MISSION_PLEDGE_RESPOND) {
-            bool accepted = utils_equals_ignore_case(arg, "ACCEPT");
             char *line = NULL;
-            network_commit_pledge_response(&context->network, realm, accepted);
-            if (asprintf(&line, "Alliance with %s %s.", realm,
-                         accepted ? "established" : "rejected") >= 0 && line != NULL) {
+            if (asprintf(&line, "Pledge response sent to %s.", realm) >= 0 && line != NULL) {
                 utils_println(line);
                 free(line);
             }

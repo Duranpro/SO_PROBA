@@ -155,6 +155,105 @@ static AllianceEntry *network_find_entry_locked(NetworkContext *network, const c
     return NULL;
 }
 
+static ssize_t network_find_pending_request_slot_locked(const CitadelConfig *config, const char *realm_name) {
+    size_t i = 0;
+
+    if (config == NULL || realm_name == NULL || config->expected_realm == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < config->request_capacity; ++i) {
+        if (config->expected_realm[i] != NULL &&
+            utils_equals_ignore_case(config->expected_realm[i], realm_name)) {
+            return (ssize_t) i;
+        }
+    }
+
+    return -1;
+}
+
+static ssize_t network_find_free_request_slot_locked(const CitadelConfig *config) {
+    size_t i = 0;
+
+    if (config == NULL || config->expected_realm == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < config->request_capacity; ++i) {
+        if (config->expected_realm[i] == NULL) {
+            return (ssize_t) i;
+        }
+    }
+
+    return -1;
+}
+
+static bool network_store_pending_request_locked(CitadelConfig *config, const char *realm_name, time_t request_time) {
+    ssize_t slot = -1;
+    char *realm_copy = NULL;
+
+    if (config == NULL || realm_name == NULL) {
+        return false;
+    }
+
+    slot = network_find_pending_request_slot_locked(config, realm_name);
+    if (slot >= 0) {
+        config->request_time[slot] = request_time;
+        return true;
+    }
+
+    slot = network_find_free_request_slot_locked(config);
+    if (slot < 0) {
+        return false;
+    }
+
+    realm_copy = utils_strdup_safe(realm_name);
+    if (realm_copy == NULL) {
+        return false;
+    }
+
+    config->expected_realm[slot] = realm_copy;
+    config->request_time[slot] = request_time;
+    config->waiting_response++;
+    return true;
+}
+
+static bool network_get_pending_request_time_locked(const CitadelConfig *config, const char *realm_name, time_t *saved_time) {
+    ssize_t slot = -1;
+
+    if (config == NULL || realm_name == NULL || saved_time == NULL) {
+        return false;
+    }
+
+    slot = network_find_pending_request_slot_locked(config, realm_name);
+    if (slot < 0) {
+        return false;
+    }
+
+    *saved_time = config->request_time[slot];
+    return true;
+}
+
+static void network_clear_pending_request_locked(CitadelConfig *config, const char *realm_name) {
+    ssize_t slot = -1;
+
+    if (config == NULL || realm_name == NULL) {
+        return;
+    }
+
+    slot = network_find_pending_request_slot_locked(config, realm_name);
+    if (slot < 0) {
+        return;
+    }
+
+    free(config->expected_realm[slot]);
+    config->expected_realm[slot] = NULL;
+    config->request_time[slot] = 0;
+    if (config->waiting_response > 0) {
+        config->waiting_response--;
+    }
+}
+
 static AllianceEntry *network_find_entry_by_endpoint_locked(NetworkContext *network, const char *endpoint) {
     size_t i = 0;
 
@@ -965,35 +1064,6 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
     return true;
 }
 
-static void network_mark_timeout(AllianceEntry *entry) {
-    if (entry == NULL) {
-        return;
-    }
-
-    entry->status = ALLIANCE_FAILED;
-    entry->deadline = 0;
-}
-
-static void network_check_timeouts(NetworkContext *network) {
-    size_t i = 0;
-    time_t now = time(NULL);
-
-    pthread_mutex_lock(&network->lock);
-    for (i = 0; i < network->alliance_count; ++i) {
-        if (network->alliances[i].status == ALLIANCE_PENDING_OUT && network->alliances[i].deadline > 0 && now >= network->alliances[i].deadline) {
-            network_mark_timeout(&network->alliances[i]);
-            
-            char *line = NULL;
-            if (asprintf(&line, "Pledge to %s has failed (TIMEOUT).", network->alliances[i].realm_name) >= 0 && line != NULL) {
-                network_log_line(line);
-                free(line);
-            }
-        
-        }
-    }
-    pthread_mutex_unlock(&network->lock);
-}
-
 static void network_handle_pledge(NetworkContext *network, const NetworkFrame *frame) {
     char *data = frame_data_to_text(frame);
     char *copy = NULL;
@@ -1032,6 +1102,8 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
     if (entry != NULL) {
         entry->status = ALLIANCE_PENDING_IN;
         entry->sigil_verified = false;
+        entry->waiting_pledge_response_ack = false;
+        entry->pending_pledge_accept = false;
         network_store_pending_origin(entry, frame->origin);
         ok = !network->inbound.active && network_begin_inbound_transfer(network, TRANSFER_SIGIL, origin_realm, frame->origin, sigil_name, (size_t) size_value, md5);
     }
@@ -1066,7 +1138,10 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
     AllianceEntry *entry = NULL;
     bool accepted = false;
     bool stale = false;
+    bool timed_out = false;
     char *ack_payload = NULL;
+    time_t saved_time = 0;
+    double elapsed = 0.0;
 
     if (data == NULL) {
         return;
@@ -1089,12 +1164,16 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
-    if (entry == NULL || entry->status != ALLIANCE_PENDING_OUT || entry->deadline == 0 ||
-        time(NULL) >= entry->deadline) {
+    if (entry == NULL || entry->status != ALLIANCE_PENDING_OUT ||
+        !network_get_pending_request_time_locked(network->config, realm_name, &saved_time)) {
         stale = true;
     } else {
-        entry->deadline = 0;
-        if (accepted) {
+        elapsed = difftime(time(NULL), saved_time);
+        network_clear_pending_request_locked(network->config, realm_name);
+        if (elapsed > CITADEL_PLEDGE_TIMEOUT_SECONDS) {
+            timed_out = true;
+            entry->status = ALLIANCE_FAILED;
+        } else if (accepted) {
             entry->status = ALLIANCE_ALLIED;
             network_set_entry_endpoint(entry, frame->origin);
         } else {
@@ -1103,7 +1182,7 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
     }
     pthread_mutex_unlock(&network->lock);
 
-    if (stale) {
+    if (stale || timed_out) {
         network_send_blank_payload(frame->origin, FRAME_TYPE_NACK, network->config->realm_name);
     } else {
         if (asprintf(&ack_payload, "OK&%s", network->config->realm_name) >= 0 && ack_payload != NULL) {
@@ -1111,7 +1190,13 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
         }
     }
 
-    if (!stale) {
+    if (timed_out) {
+        char *line = NULL;
+        if (asprintf(&line, "Pledge response from %s arrived too late (TIMEOUT).", realm_name) >= 0 && line != NULL) {
+            network_log_line(line);
+            free(line);
+        }
+    } else if (!stale) {
         char *line = NULL;
         if (asprintf(&line, "Alliance with %s %s!", realm_name,
                      accepted ? "forged successfully" : "was refused") >= 0 && line != NULL) {
@@ -1451,6 +1536,8 @@ static void network_handle_ack(NetworkContext *network, const NetworkFrame *fram
     char *realm_name = NULL;
     bool send_data = false;
     bool reset = false;
+    bool finalize_pledge_response = false;
+    bool accepted_pledge = false;
 
     if (data == NULL) {
         return;
@@ -1482,10 +1569,16 @@ static void network_handle_ack(NetworkContext *network, const NetworkFrame *fram
                 AllianceEntry *entry = network_find_entry_locked(network, realm_name);
                 if (entry != NULL) {
                     entry->status = ALLIANCE_FAILED;
-                    entry->deadline = 0;
+                    network_clear_pending_request_locked(network->config, realm_name);
                 }
             }
             reset = true;
+        }
+    } else if (utils_equals_ignore_case(status, "OK")) {
+        AllianceEntry *entry = network_find_entry_locked(network, realm_name);
+        if (entry != NULL && entry->status == ALLIANCE_PENDING_IN && entry->waiting_pledge_response_ack) {
+            finalize_pledge_response = true;
+            accepted_pledge = entry->pending_pledge_accept;
         }
     }
     pthread_mutex_unlock(&network->lock);
@@ -1500,6 +1593,16 @@ static void network_handle_ack(NetworkContext *network, const NetworkFrame *fram
         pthread_mutex_lock(&network->lock);
         network_outbound_reset(network);
         pthread_mutex_unlock(&network->lock);
+    }
+
+    if (finalize_pledge_response) {
+        char *line = NULL;
+        network_commit_pledge_response(network, realm_name, accepted_pledge);
+        if (asprintf(&line, "Alliance with %s %s.", realm_name,
+                     accepted_pledge ? "established" : "rejected") >= 0 && line != NULL) {
+            network_log_line(line);
+            free(line);
+        }
     }
 
     free(copy);
@@ -1546,7 +1649,7 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
                 AllianceEntry *entry = network_find_entry_locked(network, realm_name);
                 if (entry != NULL) {
                     entry->status = ALLIANCE_FAILED;
-                    entry->deadline = 0;
+                    network_clear_pending_request_locked(network->config, realm_name);
                 }
             }
             network_outbound_reset(network);
@@ -1577,6 +1680,7 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
     char *data = frame_data_to_text(frame);
     AllianceEntry *entry = NULL;
     char *line = NULL;
+    bool rejected_pledge_response = false;
 
     if (data == NULL) {
         return;
@@ -1589,15 +1693,27 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
         if (entry != NULL) {
             entry->waiting_products = false;
             entry->waiting_trade_ack = false;
+            if (entry->status == ALLIANCE_PENDING_IN && entry->waiting_pledge_response_ack) {
+                entry->waiting_pledge_response_ack = false;
+                entry->pending_pledge_accept = false;
+                entry->status = ALLIANCE_FAILED;
+                entry->sigil_verified = false;
+                rejected_pledge_response = true;
+            }
             if (entry->status == ALLIANCE_PENDING_OUT || entry->status == ALLIANCE_PENDING_IN) {
                 entry->status = ALLIANCE_FAILED;
-                entry->deadline = 0;
+                network_clear_pending_request_locked(network->config, data);
                 entry->sigil_verified = false;
             }
         }
         pthread_mutex_unlock(&network->lock);
 
         if (asprintf(&line, "NACK received from %s.", data) >= 0 && line != NULL) {
+            network_log_line(line);
+            free(line);
+        }
+        if (rejected_pledge_response &&
+            asprintf(&line, "Pledge response to %s was rejected or arrived too late.", data) >= 0 && line != NULL) {
             network_log_line(line);
             free(line);
         }
@@ -1638,7 +1754,7 @@ static void network_handle_unknown_realm(NetworkContext *network, const NetworkF
                     entry->waiting_trade_ack = false;
                     if (entry->status == ALLIANCE_PENDING_OUT) {
                         entry->status = ALLIANCE_FAILED;
-                        entry->deadline = 0;
+                        network_clear_pending_request_locked(network->config, realm_name);
                     }
                 }
             }
@@ -1904,7 +2020,6 @@ static void *network_server_main(void *arg) {
             }
         }
 
-        network_check_timeouts(network);
     }
 
     return NULL;
@@ -2100,7 +2215,12 @@ bool network_prepare_pledge(NetworkContext *network, const char *realm_name, con
     }
 
     entry->status = ALLIANCE_PENDING_OUT;
-    entry->deadline = time(NULL) + CITADEL_PLEDGE_TIMEOUT_SECONDS;
+    if (!network_store_pending_request_locked(network->config, realm_name, time(NULL))) {
+        pthread_mutex_unlock(&network->lock);
+        free(sigil_path);
+        free(file_name);
+        return false;
+    }
     network_outbound_reset(network);
     network->outbound.active = true;
     network->outbound.kind = TRANSFER_SIGIL;
@@ -2127,7 +2247,7 @@ void network_abort_pledge(NetworkContext *network, const char *realm_name) {
     entry = network_find_entry_locked(network, realm_name);
     if (entry != NULL && entry->status == ALLIANCE_PENDING_OUT) {
         entry->status = ALLIANCE_FAILED;
-        entry->deadline = 0;
+        network_clear_pending_request_locked(network->config, realm_name);
     }
     if (network->outbound.active && network->outbound.kind == TRANSFER_SIGIL &&
         utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
@@ -2146,7 +2266,8 @@ bool network_prepare_pledge_response(NetworkContext *network, const char *realm_
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
-    if (entry == NULL || entry->status != ALLIANCE_PENDING_IN || !entry->sigil_verified) {
+    if (entry == NULL || entry->status != ALLIANCE_PENDING_IN || !entry->sigil_verified ||
+        entry->waiting_pledge_response_ack) {
         pthread_mutex_unlock(&network->lock);
         return false;
     }
@@ -2164,7 +2285,8 @@ void network_commit_pledge_response(NetworkContext *network, const char *realm_n
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
     if (entry != NULL) {
-        entry->deadline = 0;
+        entry->waiting_pledge_response_ack = false;
+        entry->pending_pledge_accept = false;
         if (accepted) {
             entry->status = ALLIANCE_ALLIED;
             if (entry->pending_origin_endpoint != NULL) {
@@ -2376,18 +2498,27 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
     if (entry == NULL || entry->status == ALLIANCE_ALLIED || entry->status == ALLIANCE_PENDING_OUT ||
-        network->outbound.active) {
+        network->outbound.active ||
+        !network_store_pending_request_locked(network->config, realm_name, time(NULL))) {
         pthread_mutex_unlock(&network->lock);
         free(sigil_path);
         free(file_name);
         return false;
     }
+    entry->status = ALLIANCE_PENDING_OUT;
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
     if (origin == NULL ||
         asprintf(&data, "%s&%s&%zu&%s", network->config->realm_name, file_name, file_size, md5) < 0 ||
         !frame_set(&frame, FRAME_TYPE_PLEDGE, origin, realm_name, data, strlen(data))) {
+        pthread_mutex_lock(&network->lock);
+        entry = network_find_entry_locked(network, realm_name);
+        if (entry != NULL && entry->status == ALLIANCE_PENDING_OUT) {
+            entry->status = ALLIANCE_FAILED;
+        }
+        network_clear_pending_request_locked(network->config, realm_name);
+        pthread_mutex_unlock(&network->lock);
         free(sigil_path);
         free(file_name);
         free(origin);
@@ -2398,11 +2529,6 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
     sent = network_send_frame_to_realm(network, realm_name, &frame);
     if (sent) {
         pthread_mutex_lock(&network->lock);
-        entry = network_find_entry_locked(network, realm_name);
-        if (entry != NULL) {
-            entry->status = ALLIANCE_PENDING_OUT;
-            entry->deadline = time(NULL) + CITADEL_PLEDGE_TIMEOUT_SECONDS;
-        }
         network_outbound_reset(network);
         network->outbound.active = true;
         network->outbound.kind = TRANSFER_SIGIL;
@@ -2424,6 +2550,14 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
                 free(line);
             }
         }
+    } else {
+        pthread_mutex_lock(&network->lock);
+        entry = network_find_entry_locked(network, realm_name);
+        if (entry != NULL && entry->status == ALLIANCE_PENDING_OUT) {
+            entry->status = ALLIANCE_FAILED;
+        }
+        network_clear_pending_request_locked(network->config, realm_name);
+        pthread_mutex_unlock(&network->lock);
     }
 
     free(sigil_path);
@@ -2466,29 +2600,18 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
         pthread_mutex_lock(&network->lock);
         entry = network_find_entry_locked(network, realm_name);
         if (entry != NULL) {
-            entry->deadline = 0;
-            if (accepted) {
-                entry->status = ALLIANCE_ALLIED;
-                if (entry->pending_origin_endpoint != NULL) {
-                    network_set_entry_endpoint(entry, entry->pending_origin_endpoint);
-                }
-            } else {
-                entry->status = ALLIANCE_REJECTED;
-            }
-            entry->sigil_verified = false;
-            free(entry->pending_origin_endpoint);
-            entry->pending_origin_endpoint = NULL;
+            entry->waiting_pledge_response_ack = true;
+            entry->pending_pledge_accept = accepted;
         }
         pthread_mutex_unlock(&network->lock);
-
-        {
-            char *line = NULL;
-            if (asprintf(&line, "Alliance with %s %s.", realm_name,
-                         accepted ? "established" : "rejected") >= 0 && line != NULL) {
-                utils_println(line);
-                free(line);
-            }
+    } else {
+        pthread_mutex_lock(&network->lock);
+        entry = network_find_entry_locked(network, realm_name);
+        if (entry != NULL) {
+            entry->waiting_pledge_response_ack = false;
+            entry->pending_pledge_accept = false;
         }
+        pthread_mutex_unlock(&network->lock);
     }
 
     free(origin);

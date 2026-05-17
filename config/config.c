@@ -14,6 +14,51 @@ static void config_free_route(RouteInfo *route) {
     route->port = 0;
 }
 
+static size_t config_count_trackable_realms(const CitadelConfig *config) {
+    size_t i = 0;
+    size_t count = 0;
+
+    if (config == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < config->route_count; ++i) {
+        if (!utils_equals_ignore_case(config->routes[i].realm_name, "DEFAULT")) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+static bool config_allocate_request_tracking(CitadelConfig *config, size_t capacity) {
+    if (config == NULL) {
+        return false;
+    }
+
+    config->request_capacity = capacity;
+    config->waiting_response = 0;
+
+    if (capacity == 0) {
+        config->request_time = NULL;
+        config->expected_realm = NULL;
+        return true;
+    }
+
+    config->request_time = (time_t *) calloc(capacity, sizeof(time_t));
+    config->expected_realm = (char **) calloc(capacity, sizeof(char *));
+    if (config->request_time == NULL || config->expected_realm == NULL) {
+        free(config->request_time);
+        free(config->expected_realm);
+        config->request_time = NULL;
+        config->expected_realm = NULL;
+        config->request_capacity = 0;
+        return false;
+    }
+
+    return true;
+}
+
 void config_init(CitadelConfig *config) {
     if (config == NULL) {
         return;
@@ -26,6 +71,10 @@ void config_init(CitadelConfig *config) {
     config->port = 0;
     config->routes = NULL;
     config->route_count = 0;
+    config->request_time = NULL;
+    config->expected_realm = NULL;
+    config->waiting_response = 0;
+    config->request_capacity = 0;
 }
 
 static bool config_append_route(CitadelConfig *config, const char *line) {
@@ -140,6 +189,10 @@ bool config_load(const char *path, CitadelConfig *config) {
         return false;
     }
 
+    if (!config_allocate_request_tracking(config, config_count_trackable_realms(config))) {
+        return false;
+    }
+
     return true;
 }
 
@@ -166,7 +219,7 @@ bool config_clone(const CitadelConfig *source, CitadelConfig *target) {
     }
 
     if (source->route_count == 0) {
-        return true;
+        return config_allocate_request_tracking(target, source->request_capacity);
     }
 
     target->routes = (RouteInfo *) calloc(source->route_count, sizeof(RouteInfo));
@@ -188,6 +241,23 @@ bool config_clone(const CitadelConfig *source, CitadelConfig *target) {
         }
     }
 
+    if (!config_allocate_request_tracking(target, source->request_capacity)) {
+        config_free(target);
+        return false;
+    }
+
+    target->waiting_response = source->waiting_response;
+    for (i = 0; i < source->request_capacity; ++i) {
+        target->request_time[i] = source->request_time[i];
+        if (source->expected_realm != NULL && source->expected_realm[i] != NULL) {
+            target->expected_realm[i] = utils_strdup_safe(source->expected_realm[i]);
+            if (target->expected_realm[i] == NULL) {
+                config_free(target);
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -206,6 +276,14 @@ void config_free(CitadelConfig *config) {
         config_free_route(&config->routes[i]);
     }
 
+    if (config->expected_realm != NULL) {
+        for (i = 0; i < config->request_capacity; ++i) {
+            free(config->expected_realm[i]);
+        }
+    }
+
+    free(config->request_time);
+    free(config->expected_realm);
     free(config->routes);
     config_init(config);
 }

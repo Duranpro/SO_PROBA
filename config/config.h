@@ -17,6 +17,10 @@ typedef struct {
     int port;
     RouteInfo *routes;
     size_t route_count;
+    time_t *request_time;
+    char **expected_realm;
+    int waiting_response;
+    size_t request_capacity;
 } CitadelConfig;
 
 void config_init(CitadelConfig *config);
