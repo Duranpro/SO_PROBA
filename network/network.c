@@ -476,6 +476,31 @@ static bool network_send_frame_to_endpoint(const char *endpoint, const NetworkFr
     return network_send_serialized_to_endpoint(endpoint, buffer);
 }
 
+bool envoy_network_context_init(EnvoyNetworkContext *context, const CitadelConfig *config) {
+    if (context == NULL || config == NULL) {
+        return false;
+    }
+
+    memset(context, 0, sizeof(*context));
+    if (!config_clone(config, &context->config)) {
+        return false;
+    }
+
+    context->initialized = true;
+    return true;
+}
+
+void envoy_network_context_free(EnvoyNetworkContext *context) {
+    if (context == NULL) {
+        return;
+    }
+
+    if (context->initialized) {
+        config_free(&context->config);
+    }
+    memset(context, 0, sizeof(*context));
+}
+
 static bool network_send_frame_to_realm_config(const CitadelConfig *config, const char *realm_name, const NetworkFrame *frame) {
     char *endpoint = NULL;
     bool ok = false;
@@ -2245,7 +2270,8 @@ void network_abort_trade_offer(NetworkContext *network, const char *realm_name) 
 }
 
 bool network_run_envoy_action(EnvoyMissionType mission, const char *realm, const char *arg, void *user_data) {
-    NetworkContext *network = (NetworkContext *) user_data;
+    EnvoyNetworkContext *envoy_network = (EnvoyNetworkContext *) user_data;
+    const CitadelConfig *config = NULL;
     NetworkFrame frame;
     char *origin = NULL;
     char *data = NULL;
@@ -2255,11 +2281,12 @@ bool network_run_envoy_action(EnvoyMissionType mission, const char *realm, const
     size_t file_size = 0;
     bool sent = false;
 
-    if (network == NULL || realm == NULL) {
+    if (envoy_network == NULL || !envoy_network->initialized || realm == NULL) {
         return false;
     }
 
-    origin = network_build_self_endpoint(network->config);
+    config = &envoy_network->config;
+    origin = network_build_self_endpoint(config);
     if (origin == NULL) {
         return false;
     }
@@ -2270,9 +2297,9 @@ bool network_run_envoy_action(EnvoyMissionType mission, const char *realm, const
                 free(origin);
                 return false;
             }
-            sigil_path = transfer_resolve_sigil_path(network->config, arg);
+            sigil_path = transfer_resolve_sigil_path(config, arg);
             if (sigil_path == NULL || !transfer_get_file_info(sigil_path, &file_name, &file_size, md5) ||
-                asprintf(&data, "%s&%s&%zu&%s", network->config->realm_name, file_name, file_size, md5) < 0 ||
+                asprintf(&data, "%s&%s&%zu&%s", config->realm_name, file_name, file_size, md5) < 0 ||
                 !frame_set(&frame, FRAME_TYPE_PLEDGE, origin, realm, data, strlen(data))) {
                 free(sigil_path);
                 free(file_name);
@@ -2280,26 +2307,26 @@ bool network_run_envoy_action(EnvoyMissionType mission, const char *realm, const
                 free(data);
                 return false;
             }
-            sent = network_send_frame_to_realm_config(network->config, realm, &frame);
+            sent = network_send_frame_to_realm_config(config, realm, &frame);
             break;
         case ENVOY_MISSION_PLEDGE_RESPOND:
             if (arg == NULL ||
                 asprintf(&data, "%s&%s", utils_equals_ignore_case(arg, "ACCEPT") ? "ACCEPT" : "REJECT",
-                         network->config->realm_name) < 0 ||
+                         config->realm_name) < 0 ||
                 !frame_set(&frame, FRAME_TYPE_PLEDGE_RESPONSE, origin, realm, data, strlen(data))) {
                 free(origin);
                 free(data);
                 return false;
             }
-            sent = network_send_frame_to_realm_config(network->config, realm, &frame);
+            sent = network_send_frame_to_realm_config(config, realm, &frame);
             break;
         case ENVOY_MISSION_LIST_PRODUCTS:
-            if (!frame_set(&frame, FRAME_TYPE_PRODUCTS_REQUEST, origin, realm,
-                           network->config->realm_name, strlen(network->config->realm_name))) {
+            if (!frame_set(&frame, FRAME_TYPE_PRODUCTS_REQUEST, origin, realm, config->realm_name,
+                           strlen(config->realm_name))) {
                 free(origin);
                 return false;
             }
-            sent = network_send_frame_to_realm_config(network->config, realm, &frame);
+            sent = network_send_frame_to_realm_config(config, realm, &frame);
             break;
         case ENVOY_MISSION_TRADE:
             if (arg == NULL || !transfer_get_file_info(arg, &file_name, &file_size, md5) ||
@@ -2310,7 +2337,7 @@ bool network_run_envoy_action(EnvoyMissionType mission, const char *realm, const
                 free(data);
                 return false;
             }
-            sent = network_send_frame_to_realm_config(network->config, realm, &frame);
+            sent = network_send_frame_to_realm_config(config, realm, &frame);
             break;
         case ENVOY_MISSION_NONE:
         default:

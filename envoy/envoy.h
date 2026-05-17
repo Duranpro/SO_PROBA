@@ -15,6 +15,7 @@ typedef bool (*EnvoyActionRunner)(EnvoyMissionType mission, const char *realm, c
 
 typedef struct {
     pid_t pid;
+    int to_child_fd;
     int from_child_fd;
     bool alive;
     bool busy;
@@ -34,10 +35,12 @@ typedef struct {
     int count;
     EnvoyProcess *envoys;
     pthread_mutex_t lock;
+    EnvoyActionRunner runner;
+    void *runner_context;
 } EnvoyManager;
 
 void envoy_manager_init_empty(EnvoyManager *manager);
-bool envoy_manager_init(EnvoyManager *manager, int count);
+bool envoy_manager_init(EnvoyManager *manager, int count, EnvoyActionRunner runner, void *runner_context);
 void envoy_manager_shutdown(EnvoyManager *manager);
 
 int envoy_manager_assign(EnvoyManager *manager, EnvoyMissionType mission, const char *realm, const char *arg,

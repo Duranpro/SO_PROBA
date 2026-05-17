@@ -11,6 +11,7 @@ typedef struct {
     CitadelConfig config;
     Stock stock;
     NetworkContext network;
+    EnvoyNetworkContext envoy_network;
     EnvoyManager envoys;
 } MaesterContext;
 

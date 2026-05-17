@@ -81,8 +81,15 @@ typedef struct {
     InboundTransferState inbound;
 } NetworkContext;
 
+typedef struct {
+    bool initialized;
+    CitadelConfig config;
+} EnvoyNetworkContext;
+
 bool network_init(NetworkContext *network, CitadelConfig *config, Stock *stock);
 void network_shutdown(NetworkContext *network);
+bool envoy_network_context_init(EnvoyNetworkContext *context, const CitadelConfig *config);
+void envoy_network_context_free(EnvoyNetworkContext *context);
 
 bool network_realm_exists(NetworkContext *network, const char *realm_name);
 bool network_has_active_alliance(NetworkContext *network, const char *realm_name);

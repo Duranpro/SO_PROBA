@@ -21,6 +21,7 @@ typedef struct {
 
 void config_init(CitadelConfig *config);
 bool config_load(const char *path, CitadelConfig *config);
+bool config_clone(const CitadelConfig *source, CitadelConfig *target);
 void config_free(CitadelConfig *config);
 const RouteInfo *config_find_route(const CitadelConfig *config, const char *realm_name);
 void config_print_realms(const CitadelConfig *config);

@@ -143,6 +143,54 @@ bool config_load(const char *path, CitadelConfig *config) {
     return true;
 }
 
+bool config_clone(const CitadelConfig *source, CitadelConfig *target) {
+    size_t i = 0;
+
+    if (source == NULL || target == NULL) {
+        return false;
+    }
+
+    config_init(target);
+
+    target->realm_name = utils_strdup_safe(source->realm_name);
+    target->workdir = utils_strdup_safe(source->workdir);
+    target->envoy_count = source->envoy_count;
+    target->ip = utils_strdup_safe(source->ip);
+    target->port = source->port;
+
+    if ((source->realm_name != NULL && target->realm_name == NULL) ||
+        (source->workdir != NULL && target->workdir == NULL) ||
+        (source->ip != NULL && target->ip == NULL)) {
+        config_free(target);
+        return false;
+    }
+
+    if (source->route_count == 0) {
+        return true;
+    }
+
+    target->routes = (RouteInfo *) calloc(source->route_count, sizeof(RouteInfo));
+    if (target->routes == NULL) {
+        config_free(target);
+        return false;
+    }
+
+    target->route_count = source->route_count;
+    for (i = 0; i < source->route_count; ++i) {
+        target->routes[i].realm_name = utils_strdup_safe(source->routes[i].realm_name);
+        target->routes[i].ip = utils_strdup_safe(source->routes[i].ip);
+        target->routes[i].port = source->routes[i].port;
+
+        if ((source->routes[i].realm_name != NULL && target->routes[i].realm_name == NULL) ||
+            (source->routes[i].ip != NULL && target->routes[i].ip == NULL)) {
+            config_free(target);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void config_free(CitadelConfig *config) {
     size_t i = 0;
 
