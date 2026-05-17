@@ -135,6 +135,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             }
             int envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE_RESPOND, tokens[2], tokens[3]);
             if (envoy_index < 0) {
+                network_abort_pledge_response(&context->network, tokens[2]);
                 return true;
             }
             return true;

@@ -15,7 +15,6 @@ typedef bool (*EnvoyActionRunner)(EnvoyMissionType mission, const char *realm, c
 
 typedef struct {
     pid_t pid;
-    int to_child_fd;
     int from_child_fd;
     bool alive;
     bool busy;

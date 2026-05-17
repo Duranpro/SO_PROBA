@@ -102,6 +102,7 @@ bool network_send_trade_offer(NetworkContext *network, const char *realm_name, c
 bool network_prepare_pledge(NetworkContext *network, const char *realm_name, const char *sigil_name);
 void network_abort_pledge(NetworkContext *network, const char *realm_name);
 bool network_prepare_pledge_response(NetworkContext *network, const char *realm_name, bool accepted);
+void network_abort_pledge_response(NetworkContext *network, const char *realm_name);
 void network_commit_pledge_response(NetworkContext *network, const char *realm_name, bool accepted);
 bool network_prepare_remote_products(NetworkContext *network, const char *realm_name);
 void network_abort_remote_products(NetworkContext *network, const char *realm_name);
