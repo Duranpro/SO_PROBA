@@ -2,6 +2,7 @@
 #define NETWORK_H
 
 #include "../config/config.h"
+#include "../envoy/envoy.h"
 #include "../stock/stock.h"
 #include "../transfer/transfer.h"
 #include "../utils/system.h"
@@ -43,6 +44,7 @@ typedef struct {
     bool active;
     TransferKind kind;
     char *realm_name;
+    char *target_endpoint;
     char *file_name;
     char *file_path;
     size_t file_size;
@@ -92,6 +94,20 @@ bool network_request_remote_products(NetworkContext *network, const char *realm_
 bool network_send_trade_offer(NetworkContext *network, const char *realm_name, const char *file_path);
 bool network_get_remote_products_copy(NetworkContext *network, const char *realm_name,
                                       Product **products_out, size_t *count_out);
+bool network_can_launch_pledge(NetworkContext *network, const char *realm_name);
+bool network_mark_pledge_pending(NetworkContext *network, const char *realm_name);
+void network_revert_pledge_pending(NetworkContext *network, const char *realm_name);
+bool network_can_request_products(NetworkContext *network, const char *realm_name);
+void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name,
+                                       EnvoyResultStatus status, const char *remote_endpoint);
+void network_apply_envoy_products_result(NetworkContext *network, const char *realm_name,
+                                         const char *payload);
+bool network_apply_envoy_trade_result(NetworkContext *network,
+                                      Stock *stock,
+                                      const char *stock_path,
+                                      const char *realm,
+                                      EnvoyResultStatus status,
+                                      const char *payload);
 
 void network_print_pledge_status(NetworkContext *network);
 

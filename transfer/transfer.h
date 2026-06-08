@@ -16,7 +16,9 @@ bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *sto
                                    char **file_path_out, char **file_name_out,
                                    size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]);
 
+bool transfer_parse_catalog_text(const char *text, Product **products_out, size_t *count_out);
 bool transfer_parse_catalog_file(const char *path, Product **products_out, size_t *count_out);
+bool transfer_parse_order_text(const char *text, Product **products_out, size_t *count_out);
 bool transfer_parse_order_file(const char *path, Product **products_out, size_t *count_out);
 
 #endif

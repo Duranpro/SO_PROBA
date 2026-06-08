@@ -1,7 +1,17 @@
 #include "terminal.h"
 
+#include <errno.h>
+
+#include "../envoy/envoy.h"
 #include "../utils/utils.h"
 #include "commands.h"
+
+static void terminal_process_sigchld(MaesterContext *context) {
+    if (g_sigchld_pending != 0) {
+        g_sigchld_pending = 0;
+        envoy_reap_finished(context);
+    }
+}
 
 void terminal_run(MaesterContext *context, volatile sig_atomic_t *stop_requested) {
     bool keep_running = true;
@@ -9,11 +19,16 @@ void terminal_run(MaesterContext *context, volatile sig_atomic_t *stop_requested
     while (keep_running && (stop_requested == NULL || *stop_requested == 0)) {
         char *line = NULL;
 
+        terminal_process_sigchld(context);
         utils_print("$ ");
         line = utils_read_line_fd(STDIN_FILENO);
         if (line == NULL) {
             if (stop_requested != NULL && *stop_requested != 0) {
                 break;
+            }
+            if (errno == EINTR) {
+                terminal_process_sigchld(context);
+                continue;
             }
             utils_println("");
             break;

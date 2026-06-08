@@ -1,5 +1,7 @@
 #include "trade.h"
 
+#include "../envoy/envoy.h"
+#include "../realm/maester.h"
 #include "../utils/utils.h"
 
 typedef struct {
@@ -9,9 +11,7 @@ typedef struct {
 
 typedef struct {
     char *target_realm;
-    const CitadelConfig *config;
-    const Stock *stock;
-    NetworkContext *network;
+    struct MaesterContext *context;
     Product *available_products;
     size_t available_count;
     TradeItem *items;
@@ -172,7 +172,7 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
         return false;
     }
 
-    if (!utils_ensure_directory(session->config->workdir)) {
+    if (!utils_ensure_directory(session->context->config.workdir)) {
         return false;
     }
 
@@ -181,14 +181,14 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
         return false;
     }
 
-    path = utils_build_path(session->config->workdir, file_name);
+    path = utils_build_path(session->context->config.workdir, file_name);
     free(file_name);
     if (path == NULL) {
         return false;
     }
 
     written = asprintf(&content, "Requester: %s\nTarget: %s\nItems:\n",
-                       session->config->realm_name,
+                       session->context->config.realm_name,
                        session->target_realm);
     if (written < 0 || content == NULL) {
         free(path);
@@ -217,7 +217,7 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
 
     {
         char *summary = NULL;
-        written = asprintf(&summary, "Local stock loaded: %zu products\n", session->stock->count);
+        written = asprintf(&summary, "Local stock loaded: %zu products\n", session->context->stock.count);
         if (written < 0 || summary == NULL) {
             free(path);
             free(content);
@@ -270,16 +270,25 @@ static void trade_help(const char *command) {
     }
 }
 
-bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkContext *network, const char *target_realm) {
+static void trade_process_sigchld(struct MaesterContext *context) {
+    if (context != NULL && g_sigchld_pending != 0) {
+        g_sigchld_pending = 0;
+        envoy_reap_finished(context);
+    }
+}
+
+bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
     TradeSession session;
     bool keep_running = true;
     char *line = NULL;
 
+    if (context == NULL || target_realm == NULL) {
+        return false;
+    }
+
     memset(&session, 0, sizeof(session));
     session.target_realm = utils_sanitize_realm_name(target_realm);
-    session.config = config;
-    session.stock = stock;
-    session.network = network;
+    session.context = context;
 
     if (session.target_realm == NULL) {
         return false;
@@ -294,8 +303,8 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
         }
     }
 
-    if (network != NULL &&
-        network_get_remote_products_copy(network, session.target_realm,
+    if (context->network.initialized &&
+        network_get_remote_products_copy(&context->network, session.target_realm,
                                          &session.available_products, &session.available_count)) {
         size_t i = 0;
         char *line2 = utils_strdup_safe("Available products: ");
@@ -321,9 +330,17 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
         char *tokens[CITADEL_MAX_TOKENS] = {0};
         size_t count = 0;
 
+        trade_process_sigchld(context);
         utils_print("(trade)> ");
         line = utils_read_line_fd(STDIN_FILENO);
         if (line == NULL) {
+            if (g_stop_requested != 0) {
+                break;
+            }
+            if (errno == EINTR) {
+                trade_process_sigchld(context);
+                continue;
+            }
             break;
         }
 
@@ -363,21 +380,22 @@ bool trade_run_local(const CitadelConfig *config, const Stock *stock, NetworkCon
                     utils_println("Could not write the shopping list. Please try again.");
                     free(file_path);
                     free(file_name);
-                } else if (session.network != NULL &&
-                           !network_send_trade_offer(session.network, session.target_realm, file_path)) {
-                    utils_println("Trade list saved locally, but the ally could not be notified.");
-                    free(file_path);
-                    free(file_name);
                 } else {
-                    char *message = NULL;
-                    int written = asprintf(&message, "Trade list sent to %s.\n", session.target_realm);
-                    free(file_path);
-                    free(file_name);
-                    if (written >= 0 && message != NULL) {
-                        utils_print(message);
-                        free(message);
+                    if (!envoy_spawn_mission(session.context, ENVOY_MISSION_TRADE, session.target_realm, file_path)) {
+                        utils_println("Trade list saved locally, but no Envoy is available right now.");
+                        free(file_path);
+                        free(file_name);
+                    } else {
+                        char *message = NULL;
+                        int written = asprintf(&message, "Trade list sent to %s.", session.target_realm);
+                        free(file_path);
+                        free(file_name);
+                        if (written >= 0 && message != NULL) {
+                            utils_println(message);
+                            free(message);
+                        }
+                        keep_running = false;
                     }
-                    keep_running = false;
                 }
             }
         } else if (utils_equals_ignore_case(tokens[0], "cancel") || utils_equals_ignore_case(tokens[0], "exit")) {
