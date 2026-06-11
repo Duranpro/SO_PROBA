@@ -11,7 +11,8 @@ typedef enum {
     ENVOY_MISSION_NONE = 0,
     ENVOY_MISSION_PLEDGE,
     ENVOY_MISSION_PRODUCTS,
-    ENVOY_MISSION_TRADE
+    ENVOY_MISSION_TRADE,
+    ENVOY_MISSION_PLEDGE_RESPONSE
 } EnvoyMissionType;
 
 typedef enum {
@@ -42,6 +43,7 @@ typedef struct {
     int read_fd;
     EnvoySlotStatus status;
     EnvoyMissionType mission_type;
+    bool response_accepted;
     char *target_realm;
     char *file_path;
     time_t started_at;
@@ -62,6 +64,11 @@ bool envoy_spawn_mission(struct MaesterContext *context,
                          EnvoyMissionType type,
                          const char *realm,
                          const char *file_path);
+bool envoy_spawn_pledge_response(struct MaesterContext *context,
+                                 const char *realm,
+                                 bool accepted,
+                                 const char *target_endpoint,
+                                 const char *peer_stable_endpoint);
 bool envoy_result_write(int fd,
                         const EnvoyResultHeader *header,
                         const void *payload);

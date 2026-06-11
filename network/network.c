@@ -113,6 +113,7 @@ static void network_alliance_free(AllianceEntry *entry) {
     free(entry->realm_name);
     free(entry->known_endpoint);
     free(entry->pending_origin_endpoint);
+    free(entry->pending_peer_stable_endpoint);
     network_free_catalog(entry);
     memset(entry, 0, sizeof(*entry));
 }
@@ -230,6 +231,54 @@ static bool network_store_pending_origin(AllianceEntry *entry, const char *endpo
     free(entry->pending_origin_endpoint);
     entry->pending_origin_endpoint = copy;
     return true;
+}
+
+static bool network_store_pending_peer_stable_endpoint(AllianceEntry *entry, const char *endpoint) {
+    char *copy = NULL;
+    ParsedEndpoint parsed;
+
+    if (entry == NULL) {
+        return false;
+    }
+
+    if (endpoint == NULL || endpoint[0] == '\0') {
+        free(entry->pending_peer_stable_endpoint);
+        entry->pending_peer_stable_endpoint = NULL;
+        return true;
+    }
+
+    if (!network_parse_endpoint(endpoint, &parsed)) {
+        return false;
+    }
+
+    copy = utils_strdup_safe(endpoint);
+    if (copy == NULL) {
+        return false;
+    }
+
+    free(entry->pending_peer_stable_endpoint);
+    entry->pending_peer_stable_endpoint = copy;
+    return true;
+}
+
+static bool network_copy_route_endpoint(const CitadelConfig *config,
+                                        const char *realm_name,
+                                        char *endpoint_out,
+                                        size_t endpoint_size) {
+    const RouteInfo *route = NULL;
+    int written = 0;
+
+    if (config == NULL || realm_name == NULL || endpoint_out == NULL || endpoint_size == 0) {
+        return false;
+    }
+
+    route = config_find_route(config, realm_name);
+    if (route == NULL || route->ip == NULL || route->port <= 0 || strcmp(route->ip, "*.*.*.*") == 0) {
+        return false;
+    }
+
+    written = snprintf(endpoint_out, endpoint_size, "%s:%d", route->ip, route->port);
+    return written >= 0 && (size_t) written < endpoint_size;
 }
 
 static bool network_set_catalog(AllianceEntry *entry, Product *products, size_t count) {
@@ -965,8 +1014,11 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
             if (entry != NULL) {
                 entry->sigil_verified = false;
                 entry->status = ALLIANCE_FAILED;
+                entry->pledge_response_in_progress = false;
                 free(entry->pending_origin_endpoint);
                 entry->pending_origin_endpoint = NULL;
+                free(entry->pending_peer_stable_endpoint);
+                entry->pending_peer_stable_endpoint = NULL;
             }
             pthread_mutex_unlock(&network->lock);
         }
@@ -1047,6 +1099,7 @@ static void network_mark_timeout(AllianceEntry *entry) {
 
     entry->status = ALLIANCE_FAILED;
     entry->deadline = 0;
+    entry->pledge_response_in_progress = false;
 }
 
 static void network_check_timeouts(NetworkContext *network) {
@@ -1079,9 +1132,11 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
     char *sigil_name = NULL;
     char *size_text = NULL;
     char *md5 = NULL;
+    char *origin_stable_endpoint = NULL;
     int size_value = 0;
     AllianceEntry *entry = NULL;
     bool ok = false;
+    char route_endpoint[128];
 
     if (data == NULL) {
         return;
@@ -1097,6 +1152,7 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
     sigil_name = strtok(NULL, "&");
     size_text = strtok(NULL, "&");
     md5 = strtok(NULL, "&");
+    origin_stable_endpoint = strtok(NULL, "&");
     if (origin_realm == NULL || sigil_name == NULL || size_text == NULL || md5 == NULL ||
         !utils_parse_int(size_text, &size_value) || size_value < 0) {
         free(copy);
@@ -1108,10 +1164,24 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
     if (entry != NULL) {
         entry->status = ALLIANCE_PENDING_IN;
         entry->sigil_verified = false;
-        network_store_pending_origin(entry, frame->origin);
-        ok = !network->inbound.active &&
-             network_begin_inbound_transfer(network, TRANSFER_SIGIL, origin_realm, frame->origin,
-                                            sigil_name, (size_t) size_value, md5);
+        entry->pledge_response_in_progress = false;
+        ok = network_store_pending_origin(entry, frame->origin);
+        if (ok) {
+            memset(route_endpoint, 0, sizeof(route_endpoint));
+            if (origin_stable_endpoint != NULL && origin_stable_endpoint[0] != '\0') {
+                ok = network_store_pending_peer_stable_endpoint(entry, origin_stable_endpoint);
+            } else if (network_copy_route_endpoint(network->config, origin_realm,
+                                                   route_endpoint, sizeof(route_endpoint))) {
+                ok = network_store_pending_peer_stable_endpoint(entry, route_endpoint);
+            } else {
+                ok = network_store_pending_peer_stable_endpoint(entry, NULL);
+            }
+        }
+        if (ok) {
+            ok = !network->inbound.active &&
+                 network_begin_inbound_transfer(network, TRANSFER_SIGIL, origin_realm, frame->origin,
+                                                sigil_name, (size_t) size_value, md5);
+        }
     }
     pthread_mutex_unlock(&network->lock);
 
@@ -1133,6 +1203,7 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
     char *copy = NULL;
     char *decision = NULL;
     char *realm_name = NULL;
+    char *stable_endpoint = NULL;
     AllianceEntry *entry = NULL;
     bool accepted = false;
     bool stale = false;
@@ -1150,6 +1221,7 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     decision = strtok(copy, "&");
     realm_name = strtok(NULL, "&");
+    stable_endpoint = strtok(NULL, "&");
     if (decision == NULL || realm_name == NULL) {
         free(copy);
         return;
@@ -1166,7 +1238,13 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
         entry->deadline = 0;
         if (accepted) {
             entry->status = ALLIANCE_ALLIED;
-            network_set_entry_endpoint(entry, frame->origin);
+            if (stable_endpoint != NULL && stable_endpoint[0] != '\0') {
+                if (!network_set_entry_endpoint(entry, stable_endpoint)) {
+                    (void) network_set_entry_endpoint(entry, frame->origin);
+                }
+            } else {
+                (void) network_set_entry_endpoint(entry, frame->origin);
+            }
         } else {
             entry->status = ALLIANCE_REJECTED;
         }
@@ -1692,6 +1770,11 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
             entry->status = ALLIANCE_FAILED;
             entry->deadline = 0;
             entry->sigil_verified = false;
+            entry->pledge_response_in_progress = false;
+            free(entry->pending_origin_endpoint);
+            entry->pending_origin_endpoint = NULL;
+            free(entry->pending_peer_stable_endpoint);
+            entry->pending_peer_stable_endpoint = NULL;
         }
         pthread_mutex_unlock(&network->lock);
 
@@ -2158,6 +2241,7 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
     char *origin = NULL;
     char *data = NULL;
     char *response_endpoint = NULL;
+    char *peer_stable_endpoint = NULL;
     bool sent = false;
 
     if (network == NULL || realm_name == NULL) {
@@ -2171,14 +2255,19 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
         return false;
     }
     response_endpoint = utils_strdup_safe(entry->pending_origin_endpoint);
+    peer_stable_endpoint = utils_strdup_safe(entry->pending_peer_stable_endpoint);
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
     if (origin == NULL ||
-        asprintf(&data, "%s&%s", accepted ? "ACCEPT" : "REJECT", network->config->realm_name) < 0 ||
+        asprintf(&data, accepted ? "%s&%s&%s" : "%s&%s",
+                 accepted ? "ACCEPT" : "REJECT",
+                 network->config->realm_name,
+                 origin) < 0 ||
         !frame_set(&frame, FRAME_TYPE_PLEDGE_RESPONSE, origin, realm_name, data, strlen(data))) {
         free(origin);
         free(data);
+        free(peer_stable_endpoint);
         return false;
     }
 
@@ -2194,12 +2283,20 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
             entry->deadline = 0;
             if (accepted) {
                 entry->status = ALLIANCE_ALLIED;
+                if (peer_stable_endpoint != NULL && peer_stable_endpoint[0] != '\0') {
+                    (void) network_set_entry_endpoint(entry, peer_stable_endpoint);
+                } else if (entry->pending_peer_stable_endpoint != NULL) {
+                    (void) network_set_entry_endpoint(entry, entry->pending_peer_stable_endpoint);
+                }
             } else {
                 entry->status = ALLIANCE_REJECTED;
             }
             entry->sigil_verified = false;
+            entry->pledge_response_in_progress = false;
             free(entry->pending_origin_endpoint);
             entry->pending_origin_endpoint = NULL;
+            free(entry->pending_peer_stable_endpoint);
+            entry->pending_peer_stable_endpoint = NULL;
         }
         pthread_mutex_unlock(&network->lock);
 
@@ -2216,6 +2313,7 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
     free(origin);
     free(data);
     free(response_endpoint);
+    free(peer_stable_endpoint);
     return sent;
 }
 
@@ -2452,6 +2550,77 @@ void network_revert_pledge_pending(NetworkContext *network, const char *realm_na
     pthread_mutex_unlock(&network->lock);
 }
 
+bool network_prepare_pledge_response_mission(NetworkContext *network,
+                                             const char *realm,
+                                             bool accepted,
+                                             char *target_endpoint_out,
+                                             size_t target_endpoint_size,
+                                             char *peer_stable_endpoint_out,
+                                             size_t peer_stable_endpoint_size) {
+    AllianceEntry *entry = NULL;
+    bool prepared = false;
+
+    (void) accepted;
+
+    if (network == NULL || realm == NULL || target_endpoint_out == NULL || target_endpoint_size == 0 ||
+        peer_stable_endpoint_out == NULL || peer_stable_endpoint_size == 0) {
+        return false;
+    }
+
+    target_endpoint_out[0] = '\0';
+    peer_stable_endpoint_out[0] = '\0';
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm);
+    if (entry != NULL &&
+        entry->status == ALLIANCE_PENDING_IN &&
+        entry->sigil_verified &&
+        !entry->pledge_response_in_progress &&
+        entry->pending_origin_endpoint != NULL &&
+        entry->pending_origin_endpoint[0] != '\0') {
+        int written_target = snprintf(target_endpoint_out, target_endpoint_size, "%s", entry->pending_origin_endpoint);
+        int written_peer = 0;
+
+        if (written_target >= 0 && (size_t) written_target < target_endpoint_size) {
+            prepared = true;
+            if (entry->pending_peer_stable_endpoint != NULL && entry->pending_peer_stable_endpoint[0] != '\0') {
+                written_peer = snprintf(peer_stable_endpoint_out,
+                                        peer_stable_endpoint_size,
+                                        "%s",
+                                        entry->pending_peer_stable_endpoint);
+                if (written_peer < 0 || (size_t) written_peer >= peer_stable_endpoint_size) {
+                    prepared = false;
+                }
+            }
+        }
+
+        if (prepared) {
+            entry->pledge_response_in_progress = true;
+        } else {
+            target_endpoint_out[0] = '\0';
+            peer_stable_endpoint_out[0] = '\0';
+        }
+    }
+    pthread_mutex_unlock(&network->lock);
+
+    return prepared;
+}
+
+void network_revert_pledge_response_mission(NetworkContext *network, const char *realm) {
+    AllianceEntry *entry = NULL;
+
+    if (network == NULL || realm == NULL) {
+        return;
+    }
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm);
+    if (entry != NULL && entry->status == ALLIANCE_PENDING_IN) {
+        entry->pledge_response_in_progress = false;
+    }
+    pthread_mutex_unlock(&network->lock);
+}
+
 void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name,
                                        EnvoyResultStatus status, const char *remote_endpoint) {
     AllianceEntry *entry = NULL;
@@ -2481,6 +2650,46 @@ void network_apply_envoy_pledge_result(NetworkContext *network, const char *real
             default:
                 entry->status = ALLIANCE_FAILED;
                 break;
+        }
+    }
+    pthread_mutex_unlock(&network->lock);
+}
+
+void network_apply_envoy_pledge_response_result(NetworkContext *network,
+                                                const char *realm,
+                                                bool accepted,
+                                                EnvoyResultStatus status,
+                                                const char *peer_stable_endpoint) {
+    AllianceEntry *entry = NULL;
+    ParsedEndpoint parsed;
+
+    if (network == NULL || realm == NULL) {
+        return;
+    }
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm);
+    if (entry != NULL) {
+        entry->pledge_response_in_progress = false;
+        if (status == ENVOY_RESULT_OK) {
+            entry->deadline = 0;
+            entry->sigil_verified = false;
+            if (accepted) {
+                entry->status = ALLIANCE_ALLIED;
+                if (peer_stable_endpoint != NULL && peer_stable_endpoint[0] != '\0' &&
+                    network_parse_endpoint(peer_stable_endpoint, &parsed)) {
+                    (void) network_set_entry_endpoint(entry, peer_stable_endpoint);
+                } else if (entry->pending_peer_stable_endpoint != NULL &&
+                           network_parse_endpoint(entry->pending_peer_stable_endpoint, &parsed)) {
+                    (void) network_set_entry_endpoint(entry, entry->pending_peer_stable_endpoint);
+                }
+            } else {
+                entry->status = ALLIANCE_REJECTED;
+            }
+            free(entry->pending_origin_endpoint);
+            entry->pending_origin_endpoint = NULL;
+            free(entry->pending_peer_stable_endpoint);
+            entry->pending_peer_stable_endpoint = NULL;
         }
     }
     pthread_mutex_unlock(&network->lock);

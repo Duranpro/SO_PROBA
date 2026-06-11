@@ -201,3 +201,83 @@ Comprobacion recomendada:
 ```bash
 grep -R "direct_endpoint\|known_endpoint\|network_get_direct_endpoint_for_realm" envoy network
 ```
+
+## 13. PLEDGE RESPOND delegado a Envoy
+
+Escenario de servidores:
+
+- Montserrat: KingsLanding y Dragonstone.
+- Matagalls: Driftmark y TheVale.
+- Puigpedros: Winterfell.
+
+Usa siempre los `config.dat` reales. No hardcodees IPs ni puertos.
+
+Prueba basica:
+
+1. Lanzar Dragonstone en Montserrat.
+2. Lanzar TheVale en Matagalls.
+3. Si la ruta lo necesita, lanzar tambien KingsLanding o Driftmark como hop.
+4. En Dragonstone:
+
+```text
+PLEDGE TheVale data/dragonstone/dragonstone.png
+```
+
+5. En TheVale:
+
+```text
+PLEDGE STATUS
+PLEDGE RESPOND Dragonstone ACCEPT
+ENVOY STATUS
+```
+
+Esperado:
+
+- TheVale lanza un Envoy para responder.
+- El prompt no se bloquea.
+- `ENVOY STATUS` puede mostrar `PLEDGE_RESPONSE` mientras siga activa.
+- Dragonstone recibe la aceptacion.
+- El Envoy vuelve a `FREE`.
+- Ambos lados quedan aliados.
+
+Prueba de rechazo:
+
+```text
+PLEDGE RESPOND Dragonstone REJECT
+```
+
+Esperado:
+
+- Se lanza Envoy.
+- Dragonstone recibe rechazo.
+- TheVale no guarda endpoint directo como alianza activa.
+
+Prueba sin Envoys libres:
+
+1. Ocupa todos los Envoys de TheVale con otras misiones.
+2. Ejecuta:
+
+```text
+PLEDGE RESPOND Dragonstone ACCEPT
+```
+
+Esperado:
+
+- Debe aparecer `No free Envoy available.`
+- No debe enviarse respuesta directa desde el Maester.
+- El pledge debe seguir pendiente para poder reintentarlo.
+
+Comprobaciones recomendadas:
+
+```bash
+grep -R "network_send_pledge_response" terminal network envoy
+```
+
+Interpretacion:
+
+- Puede aparecer en `network.c`.
+- No debe aparecer en `terminal/commands.c`.
+
+```bash
+grep -R "ENVOY_MISSION_PLEDGE_RESPONSE\|pledge-response" envoy terminal network
+```

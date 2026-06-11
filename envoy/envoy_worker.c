@@ -20,6 +20,9 @@ typedef struct {
     char *realm;
     char *file_path;
     char *direct_endpoint;
+    char *response_action;
+    char *target_endpoint;
+    char *peer_stable_endpoint;
     CitadelConfig config;
     bool config_loaded;
 } EnvoyWorkerContext;
@@ -52,11 +55,17 @@ static void envoy_worker_context_free(EnvoyWorkerContext *context) {
     free(context->realm);
     free(context->file_path);
     free(context->direct_endpoint);
+    free(context->response_action);
+    free(context->target_endpoint);
+    free(context->peer_stable_endpoint);
     context->config_path = NULL;
     context->stock_path = NULL;
     context->realm = NULL;
     context->file_path = NULL;
     context->direct_endpoint = NULL;
+    context->response_action = NULL;
+    context->target_endpoint = NULL;
+    context->peer_stable_endpoint = NULL;
 }
 
 static EnvoyMissionType envoy_worker_parse_mission(const char *text) {
@@ -72,6 +81,9 @@ static EnvoyMissionType envoy_worker_parse_mission(const char *text) {
     }
     if (strcmp(text, "trade") == 0) {
         return ENVOY_MISSION_TRADE;
+    }
+    if (strcmp(text, "pledge-response") == 0) {
+        return ENVOY_MISSION_PLEDGE_RESPONSE;
     }
 
     return ENVOY_MISSION_NONE;
@@ -441,6 +453,31 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
             if (envoy_worker_parse_endpoint(candidate, ip, sizeof(ip), &port)) {
                 context->direct_endpoint = utils_strdup_safe(candidate);
             }
+        } else if (strcmp(argv[i], "--response") == 0 && i + 1 < argc) {
+            free(context->response_action);
+            context->response_action = utils_strdup_safe(argv[++i]);
+        } else if (strcmp(argv[i], "--target-endpoint") == 0 && i + 1 < argc) {
+            char ip[64];
+            int port = 0;
+            const char *candidate = argv[++i];
+
+            free(context->target_endpoint);
+            context->target_endpoint = NULL;
+            if (envoy_worker_parse_endpoint(candidate, ip, sizeof(ip), &port)) {
+                context->target_endpoint = utils_strdup_safe(candidate);
+            }
+        } else if (strcmp(argv[i], "--peer-stable-endpoint") == 0 && i + 1 < argc) {
+            char ip[64];
+            int port = 0;
+            const char *candidate = argv[++i];
+
+            free(context->peer_stable_endpoint);
+            context->peer_stable_endpoint = NULL;
+            if (candidate[0] == '\0') {
+                context->peer_stable_endpoint = utils_strdup_safe("");
+            } else if (envoy_worker_parse_endpoint(candidate, ip, sizeof(ip), &port)) {
+                context->peer_stable_endpoint = utils_strdup_safe(candidate);
+            }
         } else if (strcmp(argv[i], "--envoy-id") == 0 && i + 1 < argc) {
             context->envoy_id = atoi(argv[++i]);
         }
@@ -453,13 +490,30 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
         context->file_path = utils_strdup_safe("");
     }
 
-    return context->pipe_fd >= 0 &&
+    if (context->peer_stable_endpoint == NULL) {
+        context->peer_stable_endpoint = utils_strdup_safe("");
+    }
+
+    if (!(context->pipe_fd >= 0 &&
            context->envoy_id > 0 &&
            context->mission_type != ENVOY_MISSION_NONE &&
            context->config_path != NULL &&
            context->stock_path != NULL &&
            context->realm != NULL &&
-           context->file_path != NULL;
+           context->file_path != NULL &&
+           context->peer_stable_endpoint != NULL)) {
+        return false;
+    }
+
+    if (context->mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
+        return context->response_action != NULL &&
+               context->target_endpoint != NULL &&
+               context->target_endpoint[0] != '\0' &&
+               (utils_equals_ignore_case(context->response_action, "ACCEPT") ||
+                utils_equals_ignore_case(context->response_action, "REJECT"));
+    }
+
+    return true;
 }
 
 static bool envoy_worker_wait_frame_type(int listener_fd,
@@ -844,6 +898,94 @@ cleanup:
     return result;
 }
 
+static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ctx,
+                                                          char *remote_endpoint_out,
+                                                          size_t remote_endpoint_size,
+                                                          char **payload_out) {
+    int listener_fd = -1;
+    char private_endpoint[128];
+    char local_stable_endpoint[128];
+    char *response_text = NULL;
+    NetworkFrame response_frame;
+    NetworkFrame ack_frame;
+    char *frame_payload = NULL;
+    bool accepted = false;
+    EnvoyResultStatus result = ENVOY_RESULT_FAILED;
+
+    if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL ||
+        ctx->target_endpoint == NULL || ctx->response_action == NULL) {
+        return ENVOY_RESULT_FAILED;
+    }
+
+    remote_endpoint_out[0] = '\0';
+    (void) remote_endpoint_size;
+    *payload_out = NULL;
+    memset(private_endpoint, 0, sizeof(private_endpoint));
+    memset(local_stable_endpoint, 0, sizeof(local_stable_endpoint));
+    memset(&response_frame, 0, sizeof(response_frame));
+    memset(&ack_frame, 0, sizeof(ack_frame));
+
+    accepted = utils_equals_ignore_case(ctx->response_action, "ACCEPT");
+    if (!accepted && !utils_equals_ignore_case(ctx->response_action, "REJECT")) {
+        *payload_out = utils_strdup_safe("Invalid pledge response action.");
+        return ENVOY_RESULT_FAILED;
+    }
+
+    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port,
+                                     local_stable_endpoint, sizeof(local_stable_endpoint))) {
+        *payload_out = utils_strdup_safe("Could not build local stable endpoint.");
+        return ENVOY_RESULT_FAILED;
+    }
+
+    listener_fd = envoy_worker_create_private_listener(&ctx->config, private_endpoint, sizeof(private_endpoint));
+    if (listener_fd < 0) {
+        *payload_out = utils_strdup_safe("Could not create private Envoy listener.");
+        return ENVOY_RESULT_FAILED;
+    }
+
+    if ((accepted &&
+         asprintf(&response_text, "ACCEPT&%s&%s", ctx->config.realm_name, local_stable_endpoint) < 0) ||
+        (!accepted &&
+         asprintf(&response_text, "REJECT&%s", ctx->config.realm_name) < 0) ||
+        response_text == NULL ||
+        !frame_set(&response_frame, FRAME_TYPE_PLEDGE_RESPONSE, private_endpoint, ctx->realm,
+                   response_text, strlen(response_text)) ||
+        !envoy_worker_send_frame_to_endpoint(ctx->target_endpoint, &response_frame)) {
+        *payload_out = utils_strdup_safe("Could not send pledge response.");
+        goto cleanup;
+    }
+
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK,
+                                      ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
+        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
+                                         "Timed out waiting for final ACK." :
+                                         "Invalid final ACK received.");
+        goto cleanup;
+    }
+
+    frame_payload = envoy_worker_frame_data_text(&ack_frame);
+    if (frame_payload == NULL || !envoy_worker_payload_starts_with(frame_payload, "OK&")) {
+        *payload_out = utils_strdup_safe("Pledge response was not acknowledged.");
+        goto cleanup;
+    }
+
+    result = ENVOY_RESULT_OK;
+    if (accepted) {
+        *payload_out = utils_strdup_safe(ctx->peer_stable_endpoint != NULL ? ctx->peer_stable_endpoint : "");
+    } else {
+        *payload_out = utils_strdup_safe("Rejected");
+    }
+
+cleanup:
+    if (listener_fd >= 0) {
+        close(listener_fd);
+    }
+    free(frame_payload);
+    free(response_text);
+    return result;
+}
+
 static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx,
                                                char *remote_endpoint_out,
                                                size_t remote_endpoint_size,
@@ -887,6 +1029,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
                                                  char **payload_out) {
     char *sigil_path = NULL;
     char *file_name = NULL;
+    char stable_endpoint[128];
     char md5[CITADEL_MD5_LENGTH + 1];
     size_t file_size = 0;
     int listener_fd = -1;
@@ -906,6 +1049,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
 
     remote_endpoint_out[0] = '\0';
     *payload_out = NULL;
+    memset(stable_endpoint, 0, sizeof(stable_endpoint));
     memset(md5, 0, sizeof(md5));
     memset(private_endpoint, 0, sizeof(private_endpoint));
     memset(&pledge_frame, 0, sizeof(pledge_frame));
@@ -929,7 +1073,14 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
         return ENVOY_RESULT_FAILED;
     }
 
-    if (asprintf(&payload_text, "%s&%s&%zu&%s", ctx->config.realm_name, file_name, file_size, md5) < 0 ||
+    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port,
+                                     stable_endpoint, sizeof(stable_endpoint)) ||
+        asprintf(&payload_text, "%s&%s&%zu&%s&%s",
+                 ctx->config.realm_name,
+                 file_name,
+                 file_size,
+                 md5,
+                 stable_endpoint) < 0 ||
         payload_text == NULL ||
         !frame_set(&pledge_frame, FRAME_TYPE_PLEDGE, private_endpoint, ctx->realm,
                    payload_text, strlen(payload_text)) ||
@@ -993,9 +1144,6 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
         goto cleanup;
     }
 
-    strncpy(remote_endpoint_out, response_frame.origin, remote_endpoint_size - 1);
-    remote_endpoint_out[remote_endpoint_size - 1] = '\0';
-
     frame_payload = envoy_worker_frame_data_text(&response_frame);
     if (frame_payload == NULL) {
         *payload_out = utils_strdup_safe("Invalid pledge response received.");
@@ -1006,6 +1154,36 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
     (void) envoy_worker_send_ack(response_frame.origin, private_endpoint, "", ack_final);
 
     if (envoy_worker_payload_starts_with(frame_payload, "ACCEPT&")) {
+        char *response_copy = utils_strdup_safe(frame_payload);
+        char *decision = NULL;
+        char *realm_name = NULL;
+        char *stable = NULL;
+
+        if (response_copy == NULL) {
+            *payload_out = utils_strdup_safe("Invalid pledge response received.");
+            goto cleanup;
+        }
+
+        decision = strtok(response_copy, "&");
+        realm_name = strtok(NULL, "&");
+        stable = strtok(NULL, "&");
+        (void) decision;
+        (void) realm_name;
+
+        if (stable != NULL && stable[0] != '\0') {
+            char ip[64];
+            int port = 0;
+            if (envoy_worker_parse_endpoint(stable, ip, sizeof(ip), &port)) {
+                strncpy(remote_endpoint_out, stable, remote_endpoint_size - 1);
+                remote_endpoint_out[remote_endpoint_size - 1] = '\0';
+            }
+        }
+        if (remote_endpoint_out[0] == '\0') {
+            strncpy(remote_endpoint_out, response_frame.origin, remote_endpoint_size - 1);
+            remote_endpoint_out[remote_endpoint_size - 1] = '\0';
+        }
+
+        free(response_copy);
         result = ENVOY_RESULT_OK;
     } else if (envoy_worker_payload_starts_with(frame_payload, "REJECT&")) {
         result = ENVOY_RESULT_REJECTED;
@@ -1156,6 +1334,8 @@ int envoy_worker_main(int argc, char **argv) {
     context.config_loaded = config_load(context.config_path, &context.config);
     if (!context.config_loaded) {
         payload_text = utils_strdup_safe("Envoy worker could not load config.");
+    } else if (context.mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
+        result = envoy_worker_run_pledge_response(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
     } else if (context.mission_type == ENVOY_MISSION_PLEDGE &&
                strcmp(context.file_path, "stub-sigil") != 0) {
         result = envoy_worker_run_pledge(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);

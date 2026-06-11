@@ -32,10 +32,12 @@ typedef struct {
     AllianceStatus status;
     char *known_endpoint;
     char *pending_origin_endpoint;
+    char *pending_peer_stable_endpoint;
     time_t deadline;
     bool waiting_products;
     bool waiting_trade_ack;
     bool sigil_verified;
+    bool pledge_response_in_progress;
     Product *catalog;
     size_t catalog_count;
 } AllianceEntry;
@@ -97,6 +99,14 @@ bool network_get_remote_products_copy(NetworkContext *network, const char *realm
 bool network_can_launch_pledge(NetworkContext *network, const char *realm_name);
 bool network_mark_pledge_pending(NetworkContext *network, const char *realm_name);
 void network_revert_pledge_pending(NetworkContext *network, const char *realm_name);
+bool network_prepare_pledge_response_mission(NetworkContext *network,
+                                             const char *realm,
+                                             bool accepted,
+                                             char *target_endpoint_out,
+                                             size_t target_endpoint_size,
+                                             char *peer_stable_endpoint_out,
+                                             size_t peer_stable_endpoint_size);
+void network_revert_pledge_response_mission(NetworkContext *network, const char *realm);
 bool network_can_request_products(NetworkContext *network, const char *realm_name);
 bool network_get_direct_endpoint_for_realm(NetworkContext *network,
                                            const char *realm,
@@ -104,6 +114,11 @@ bool network_get_direct_endpoint_for_realm(NetworkContext *network,
                                            size_t endpoint_size);
 void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name,
                                        EnvoyResultStatus status, const char *remote_endpoint);
+void network_apply_envoy_pledge_response_result(NetworkContext *network,
+                                                const char *realm,
+                                                bool accepted,
+                                                EnvoyResultStatus status,
+                                                const char *peer_stable_endpoint);
 void network_apply_envoy_products_result(NetworkContext *network, const char *realm_name,
                                          const char *payload);
 bool network_apply_envoy_trade_result(NetworkContext *network,

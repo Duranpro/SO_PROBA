@@ -111,10 +111,34 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
         }
         if (count == 4 &&
             (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
-            if (!network_send_pledge_response(&context->network, tokens[2],
-                                              utils_equals_ignore_case(tokens[3], "ACCEPT"))) {
+            bool accepted = utils_equals_ignore_case(tokens[3], "ACCEPT");
+            char target_endpoint[128];
+            char peer_stable_endpoint[128];
+
+            memset(target_endpoint, 0, sizeof(target_endpoint));
+            memset(peer_stable_endpoint, 0, sizeof(peer_stable_endpoint));
+
+            if (!network_prepare_pledge_response_mission(&context->network,
+                                                         tokens[2],
+                                                         accepted,
+                                                         target_endpoint,
+                                                         sizeof(target_endpoint),
+                                                         peer_stable_endpoint,
+                                                         sizeof(peer_stable_endpoint))) {
                 utils_println("There is no pending pledge from that realm.");
+                return true;
             }
+
+            if (!envoy_spawn_pledge_response(context,
+                                             tokens[2],
+                                             accepted,
+                                             target_endpoint,
+                                             peer_stable_endpoint)) {
+                network_revert_pledge_response_mission(&context->network, tokens[2]);
+                utils_println("No free Envoy available.");
+                return true;
+            }
+            utils_println("Pledge response delegated to Envoy.");
             return true;
         }
         utils_println("Unknown command");
