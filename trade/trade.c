@@ -217,7 +217,8 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
 
     {
         char *summary = NULL;
-        written = asprintf(&summary, "Local stock loaded: %zu products\n", session->context->stock.count);
+        written = asprintf(&summary, "Local stock loaded: %zu products\n",
+                           stock_count(&session->context->stock));
         if (written < 0 || summary == NULL) {
             free(path);
             free(content);

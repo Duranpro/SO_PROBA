@@ -40,9 +40,9 @@ void maester_context_destroy(MaesterContext *context) {
         return;
     }
 
-    stock_save(&context->stock);
-    envoy_manager_destroy(&context->envoys);
     network_shutdown(&context->network);
+    envoy_manager_destroy(&context->envoys);
+    stock_save(&context->stock);
     stock_free(&context->stock);
     config_free(&context->config);
     free(context->program_path);

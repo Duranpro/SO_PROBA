@@ -149,7 +149,10 @@ bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *sto
     char *file_name = NULL;
     char *file_path = NULL;
     char *content = NULL;
+    Product *snapshot = NULL;
+    size_t snapshot_count = 0;
     size_t i = 0;
+    Stock *mutable_stock = (Stock *) stock;
 
     if (config == NULL || stock == NULL || file_path_out == NULL || file_name_out == NULL ||
         size_out == NULL || md5_out == NULL) {
@@ -177,15 +180,37 @@ bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *sto
         return false;
     }
 
-    for (i = 0; i < stock->count; ++i) {
+    if (!stock_lock(mutable_stock)) {
+        free(content);
+        free(file_name);
+        free(file_path);
+        return false;
+    }
+
+    if (stock->count > 0) {
+        snapshot = stock_clone_products(stock->products, stock->count);
+        snapshot_count = stock->count;
+    }
+
+    stock_unlock(mutable_stock);
+
+    if (snapshot_count > 0 && snapshot == NULL) {
+        free(content);
+        free(file_name);
+        free(file_path);
+        return false;
+    }
+
+    for (i = 0; i < snapshot_count; ++i) {
         char *line = NULL;
         char *new_content = NULL;
 
-        if (asprintf(&line, "%s|%d|%.2f\n", stock->products[i].name, stock->products[i].amount,
-                     stock->products[i].weight) < 0 || line == NULL) {
+        if (asprintf(&line, "%s|%d|%.2f\n", snapshot[i].name, snapshot[i].amount,
+                     snapshot[i].weight) < 0 || line == NULL) {
             free(content);
             free(file_name);
             free(file_path);
+            stock_free_products(snapshot, snapshot_count);
             return false;
         }
 
@@ -194,6 +219,7 @@ bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *sto
             free(content);
             free(file_name);
             free(file_path);
+            stock_free_products(snapshot, snapshot_count);
             return false;
         }
 
@@ -206,11 +232,13 @@ bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *sto
         free(content);
         free(file_name);
         free(file_path);
+        stock_free_products(snapshot, snapshot_count);
         return false;
     }
 
     *size_out = strlen(content);
     free(content);
+    stock_free_products(snapshot, snapshot_count);
 
     if (!transfer_compute_md5sum(file_path, md5_out)) {
         free(file_name);

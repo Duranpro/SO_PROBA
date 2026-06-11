@@ -281,3 +281,89 @@ Interpretacion:
 ```bash
 grep -R "ENVOY_MISSION_PLEDGE_RESPONSE\|pledge-response" envoy terminal network
 ```
+
+## 14. Pruebas de exclusion mutua de stock
+
+### Trade entrante y LIST PRODUCTS local simultaneo
+
+1. Lanzar dos Maesters aliados.
+2. Desde A iniciar un trade hacia B.
+3. Mientras B procesa el pedido, ejecutar varias veces en B:
+
+```text
+LIST PRODUCTS
+```
+
+Esperado:
+
+- no segmentation fault;
+- no datos corruptos;
+- no cantidades negativas;
+- no bloqueo permanente.
+
+### Trade saliente aceptado y LIST PRODUCTS local simultaneo
+
+1. Desde A hacer `START TRADE B`.
+2. Enviar un pedido aceptado.
+3. Mientras A recibe el resultado del Envoy, ejecutar:
+
+```text
+LIST PRODUCTS
+```
+
+Esperado:
+
+- stock actualizado o estado anterior, pero nunca corrupcion;
+- no crash;
+- no deadlock.
+
+### EXIT con Envoys o red activos
+
+1. Lanzar `PLEDGE`, `LIST PRODUCTS <REALM>` o `START TRADE`.
+2. Antes de que termine, ejecutar:
+
+```text
+EXIT
+```
+
+Esperado:
+
+- se detiene la red;
+- se destruyen Envoys;
+- se guarda stock al final;
+- no quedan zombies;
+- `stock.db` no queda truncado ni corrupto.
+
+### Ctrl+C con red activa
+
+1. Lanzar una operacion de trade.
+2. Pulsar `Ctrl+C`.
+
+Esperado:
+
+- shutdown limpio;
+- stock guardado despues de parar red y Envoys;
+- sin zombies;
+- sin FDs abiertos.
+
+Comandos utiles:
+
+```bash
+ps -ef | grep Maester
+ps -ef | grep defunct
+lsof -p <pid>
+valgrind --leak-check=full --track-fds=yes ./Maester <config> <stock>
+```
+
+### Greps de validacion para stock
+
+```bash
+grep -R "pthread_mutex_t.*mutex\|mutex_initialized\|stock_lock\|stock_unlock" stock
+grep -R "stock.count\|->stock.count" .
+grep -n "network_shutdown\|envoy_manager_destroy\|stock_save" realm/maester.c
+```
+
+Interpretacion:
+
+- `trade.c` y `commands.c` no deberian leer `stock.count` directamente.
+- `stock_save` debe ir despues de `network_shutdown` y `envoy_manager_destroy`.

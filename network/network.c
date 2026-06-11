@@ -1478,10 +1478,33 @@ static float network_find_catalog_weight(NetworkContext *network, const char *re
     return weight;
 }
 
+static void network_restore_stock_snapshot_locked(Stock *stock,
+                                                  Product *snapshot,
+                                                  size_t snapshot_count,
+                                                  char *snapshot_db_path) {
+    size_t i = 0;
+
+    if (stock == NULL) {
+        return;
+    }
+
+    for (i = 0; i < stock->count; ++i) {
+        free(stock->products[i].name);
+        stock->products[i].name = NULL;
+    }
+
+    free(stock->products);
+    stock->products = snapshot;
+    stock->count = snapshot_count;
+    free(stock->db_path);
+    stock->db_path = snapshot_db_path;
+}
+
 static bool network_apply_successful_order_to_local_stock(NetworkContext *network,
                                                           const char *supplier_realm,
                                                           const char *order_file_path) {
     char *order_text = NULL;
+    char *stock_path_copy = NULL;
     bool applied = false;
 
     if (network == NULL || supplier_realm == NULL || order_file_path == NULL) {
@@ -1493,12 +1516,14 @@ static bool network_apply_successful_order_to_local_stock(NetworkContext *networ
         return false;
     }
 
+    stock_path_copy = stock_db_path_copy(network->stock);
     applied = network_apply_envoy_trade_result(network,
                                                network->stock,
-                                               network->stock != NULL ? network->stock->db_path : NULL,
+                                               stock_path_copy,
                                                supplier_realm,
                                                ENVOY_RESULT_OK,
                                                order_text);
+    free(stock_path_copy);
     free(order_text);
     return applied;
 }
@@ -1510,9 +1535,13 @@ bool network_apply_envoy_trade_result(NetworkContext *network,
                                       EnvoyResultStatus status,
                                       const char *payload) {
     Product *items = NULL;
+    Product *snapshot = NULL;
     size_t count = 0;
+    size_t snapshot_count = 0;
     size_t i = 0;
     bool ok = false;
+    char *snapshot_db_path = NULL;
+    char *new_db_path = NULL;
 
     if (network == NULL || stock == NULL || realm == NULL || payload == NULL) {
         return false;
@@ -1528,6 +1557,48 @@ bool network_apply_envoy_trade_result(NetworkContext *network,
     }
 
     for (i = 0; i < count; ++i) {
+        bool weight_found = false;
+        items[i].weight = network_find_catalog_weight(network, realm, items[i].name, &weight_found);
+        if (!weight_found) {
+            items[i].weight = 0.0f;
+        }
+    }
+
+    if (!stock_lock(stock)) {
+        stock_free_products(items, count);
+        return false;
+    }
+
+    snapshot_count = stock->count;
+    if (stock->count > 0) {
+        snapshot = stock_clone_products(stock->products, stock->count);
+        if (snapshot == NULL) {
+            stock_unlock(stock);
+            stock_free_products(items, count);
+            return false;
+        }
+    }
+
+    snapshot_db_path = utils_strdup_safe(stock->db_path);
+    if (stock->db_path != NULL && snapshot_db_path == NULL) {
+        stock_unlock(stock);
+        stock_free_products(snapshot, snapshot_count);
+        stock_free_products(items, count);
+        return false;
+    }
+
+    if (stock->db_path == NULL && stock_path != NULL) {
+        new_db_path = utils_strdup_safe(stock_path);
+        if (new_db_path == NULL) {
+            stock_unlock(stock);
+            free(snapshot_db_path);
+            stock_free_products(snapshot, snapshot_count);
+            stock_free_products(items, count);
+            return false;
+        }
+    }
+
+    for (i = 0; i < count; ++i) {
         Product *existing = stock_find_mutable(stock, items[i].name);
         if (existing != NULL) {
             existing->amount += items[i].amount;
@@ -1538,9 +1609,13 @@ bool network_apply_envoy_trade_result(NetworkContext *network,
             Product *grown = (Product *) realloc(stock->products,
                                                  sizeof(Product) * (stock->count + 1));
             Product *slot = NULL;
-            bool weight_found = false;
 
             if (grown == NULL) {
+                network_restore_stock_snapshot_locked(stock, snapshot, snapshot_count, snapshot_db_path);
+                snapshot = NULL;
+                snapshot_db_path = NULL;
+                stock_unlock(stock);
+                free(new_db_path);
                 stock_free_products(items, count);
                 return false;
             }
@@ -1550,24 +1625,36 @@ bool network_apply_envoy_trade_result(NetworkContext *network,
             memset(slot, 0, sizeof(*slot));
             slot->name = utils_strdup_safe(items[i].name);
             if (slot->name == NULL) {
+                network_restore_stock_snapshot_locked(stock, snapshot, snapshot_count, snapshot_db_path);
+                snapshot = NULL;
+                snapshot_db_path = NULL;
+                stock_unlock(stock);
+                free(new_db_path);
                 stock_free_products(items, count);
                 return false;
             }
 
             slot->amount = items[i].amount;
-            slot->weight = network_find_catalog_weight(network, realm, items[i].name, &weight_found);
-            if (!weight_found) {
-                slot->weight = 0.0f;
-            }
+            slot->weight = items[i].weight;
             stock->count++;
         }
     }
 
     if (stock_path != NULL && stock->db_path == NULL) {
-        stock->db_path = utils_strdup_safe(stock_path);
+        stock->db_path = new_db_path;
+        new_db_path = NULL;
     }
 
-    ok = stock_save(stock);
+    ok = stock_save_locked(stock);
+    if (!ok) {
+        network_restore_stock_snapshot_locked(stock, snapshot, snapshot_count, snapshot_db_path);
+        snapshot = NULL;
+        snapshot_db_path = NULL;
+    }
+    stock_unlock(stock);
+    stock_free_products(snapshot, snapshot_count);
+    free(snapshot_db_path);
+    free(new_db_path);
     stock_free_products(items, count);
     return ok;
 }
