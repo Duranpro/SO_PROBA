@@ -208,8 +208,10 @@ bool envoy_spawn_mission(struct MaesterContext *context,
     int pipe_fd[2] = {-1, -1};
     char pipe_fd_text[32];
     char envoy_id_text[32];
+    char direct_endpoint[128];
     const char *mission_text = NULL;
     const char *file_arg = NULL;
+    bool has_direct_endpoint = false;
     pid_t pid = 0;
 
     if (context == NULL || context->program_path == NULL || context->config_path == NULL ||
@@ -224,6 +226,13 @@ bool envoy_spawn_mission(struct MaesterContext *context,
 
     mission_text = envoy_mission_exec_text(type);
     file_arg = (file_path != NULL) ? file_path : "";
+    memset(direct_endpoint, 0, sizeof(direct_endpoint));
+    if (realm != NULL) {
+        has_direct_endpoint = network_get_direct_endpoint_for_realm(&context->network,
+                                                                    realm,
+                                                                    direct_endpoint,
+                                                                    sizeof(direct_endpoint));
+    }
 
     pthread_mutex_lock(&context->envoys.mutex);
     for (i = 0; i < context->envoys.count; ++i) {
@@ -273,6 +282,8 @@ bool envoy_spawn_mission(struct MaesterContext *context,
             (char *) file_arg,
             "--envoy-id",
             envoy_id_text,
+            has_direct_endpoint ? "--direct-endpoint" : NULL,
+            has_direct_endpoint ? direct_endpoint : NULL,
             NULL
         };
         EnvoyResultHeader header;

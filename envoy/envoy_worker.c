@@ -19,6 +19,7 @@ typedef struct {
     char *stock_path;
     char *realm;
     char *file_path;
+    char *direct_endpoint;
     CitadelConfig config;
     bool config_loaded;
 } EnvoyWorkerContext;
@@ -50,10 +51,12 @@ static void envoy_worker_context_free(EnvoyWorkerContext *context) {
     free(context->stock_path);
     free(context->realm);
     free(context->file_path);
+    free(context->direct_endpoint);
     context->config_path = NULL;
     context->stock_path = NULL;
     context->realm = NULL;
     context->file_path = NULL;
+    context->direct_endpoint = NULL;
 }
 
 static EnvoyMissionType envoy_worker_parse_mission(const char *text) {
@@ -275,19 +278,24 @@ static bool envoy_worker_route_has_address(const RouteInfo *route) {
     return strcmp(route->ip, "*.*.*.*") != 0;
 }
 
-static bool envoy_worker_resolve_realm_endpoint(const CitadelConfig *config,
+static bool envoy_worker_resolve_realm_endpoint(const EnvoyWorkerContext *ctx,
                                                 const char *realm,
                                                 char *endpoint_out,
                                                 size_t endpoint_size) {
     const RouteInfo *route = NULL;
 
-    if (config == NULL || realm == NULL || endpoint_out == NULL || endpoint_size == 0) {
+    if (ctx == NULL || realm == NULL || endpoint_out == NULL || endpoint_size == 0) {
         return false;
     }
 
-    route = config_find_route(config, realm);
+    if (ctx->direct_endpoint != NULL && ctx->direct_endpoint[0] != '\0') {
+        int written = snprintf(endpoint_out, endpoint_size, "%s", ctx->direct_endpoint);
+        return written >= 0 && (size_t) written < endpoint_size;
+    }
+
+    route = config_find_route(&ctx->config, realm);
     if (!envoy_worker_route_has_address(route)) {
-        route = config_find_route(config, "DEFAULT");
+        route = config_find_route(&ctx->config, "DEFAULT");
     }
 
     if (!envoy_worker_route_has_address(route)) {
@@ -297,12 +305,12 @@ static bool envoy_worker_resolve_realm_endpoint(const CitadelConfig *config,
     return envoy_worker_build_endpoint(route->ip, route->port, endpoint_out, endpoint_size);
 }
 
-static bool envoy_worker_send_frame_to_realm(const CitadelConfig *config,
+static bool envoy_worker_send_frame_to_realm(const EnvoyWorkerContext *ctx,
                                              const char *realm,
                                              const NetworkFrame *frame) {
     char endpoint[128];
 
-    if (!envoy_worker_resolve_realm_endpoint(config, realm, endpoint, sizeof(endpoint))) {
+    if (!envoy_worker_resolve_realm_endpoint(ctx, realm, endpoint, sizeof(endpoint))) {
         return false;
     }
 
@@ -423,6 +431,16 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
         } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
             free(context->file_path);
             context->file_path = utils_strdup_safe(argv[++i]);
+        } else if (strcmp(argv[i], "--direct-endpoint") == 0 && i + 1 < argc) {
+            char ip[64];
+            int port = 0;
+            const char *candidate = argv[++i];
+
+            free(context->direct_endpoint);
+            context->direct_endpoint = NULL;
+            if (envoy_worker_parse_endpoint(candidate, ip, sizeof(ip), &port)) {
+                context->direct_endpoint = utils_strdup_safe(candidate);
+            }
         } else if (strcmp(argv[i], "--envoy-id") == 0 && i + 1 < argc) {
             context->envoy_id = atoi(argv[++i]);
         }
@@ -542,7 +560,7 @@ static bool envoy_worker_parse_header_triplet(const char *text,
     return true;
 }
 
-static bool envoy_worker_send_file_fragments(const CitadelConfig *config,
+static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx,
                                              const char *origin_endpoint,
                                              const char *destination_realm,
                                              const char *file_path,
@@ -551,7 +569,7 @@ static bool envoy_worker_send_file_fragments(const CitadelConfig *config,
     unsigned char block[CITADEL_FRAME_DATA_SIZE];
     bool ok = true;
 
-    if (config == NULL || origin_endpoint == NULL || destination_realm == NULL || file_path == NULL) {
+    if (ctx == NULL || origin_endpoint == NULL || destination_realm == NULL || file_path == NULL) {
         return false;
     }
 
@@ -576,7 +594,7 @@ static bool envoy_worker_send_file_fragments(const CitadelConfig *config,
         }
 
         if (!frame_set(&frame, frame_type, origin_endpoint, destination_realm, block, (size_t) bytes) ||
-            !envoy_worker_send_frame_to_realm(config, destination_realm, &frame)) {
+            !envoy_worker_send_frame_to_realm(ctx, destination_realm, &frame)) {
             ok = false;
             break;
         }
@@ -740,7 +758,7 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
         header_payload == NULL ||
         !frame_set(&trade_header, FRAME_TYPE_TRADE_HEADER, private_endpoint, ctx->realm,
                    header_payload, strlen(header_payload)) ||
-        !envoy_worker_send_frame_to_realm(&ctx->config, ctx->realm, &trade_header)) {
+        !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &trade_header)) {
         *payload_out = utils_strdup_safe("Could not send trade header.");
         goto cleanup;
     }
@@ -763,7 +781,7 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_send_file_fragments(&ctx->config, private_endpoint, ctx->realm,
+    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm,
                                           ctx->file_path, FRAME_TYPE_TRADE_DATA)) {
         *payload_out = utils_strdup_safe("Could not send trade order data.");
         goto cleanup;
@@ -915,7 +933,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
         payload_text == NULL ||
         !frame_set(&pledge_frame, FRAME_TYPE_PLEDGE, private_endpoint, ctx->realm,
                    payload_text, strlen(payload_text)) ||
-        !envoy_worker_send_frame_to_realm(&ctx->config, ctx->realm, &pledge_frame)) {
+        !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &pledge_frame)) {
         *payload_out = utils_strdup_safe("Could not send pledge request.");
         goto cleanup;
     }
@@ -940,7 +958,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_send_file_fragments(&ctx->config, private_endpoint, ctx->realm,
+    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm,
                                           sigil_path, FRAME_TYPE_SIGIL_DATA)) {
         *payload_out = utils_strdup_safe("Could not send pledge sigil data.");
         goto cleanup;
@@ -1046,7 +1064,7 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx,
 
     if (!frame_set(&request_frame, FRAME_TYPE_PRODUCTS_REQUEST, private_endpoint, ctx->realm,
                    ctx->config.realm_name, strlen(ctx->config.realm_name)) ||
-        !envoy_worker_send_frame_to_realm(&ctx->config, ctx->realm, &request_frame)) {
+        !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &request_frame)) {
         *payload_out = utils_strdup_safe("Could not send products request.");
         goto cleanup;
     }

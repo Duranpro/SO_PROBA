@@ -195,8 +195,13 @@ static char *network_find_realm_by_endpoint(NetworkContext *network, const char 
 
 static bool network_set_entry_endpoint(AllianceEntry *entry, const char *endpoint) {
     char *copy = NULL;
+    ParsedEndpoint parsed;
 
     if (entry == NULL || endpoint == NULL) {
+        return false;
+    }
+
+    if (!network_parse_endpoint(endpoint, &parsed)) {
         return false;
     }
 
@@ -2363,6 +2368,34 @@ bool network_get_remote_products_copy(NetworkContext *network, const char *realm
     return *products_out != NULL;
 }
 
+bool network_get_direct_endpoint_for_realm(NetworkContext *network,
+                                           const char *realm,
+                                           char *endpoint_out,
+                                           size_t endpoint_size) {
+    AllianceEntry *entry = NULL;
+    ParsedEndpoint parsed;
+    bool ok = false;
+
+    if (network == NULL || realm == NULL || endpoint_out == NULL || endpoint_size == 0) {
+        return false;
+    }
+
+    endpoint_out[0] = '\0';
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_find_entry_locked(network, realm);
+    if (entry != NULL &&
+        entry->status == ALLIANCE_ALLIED &&
+        entry->known_endpoint != NULL &&
+        network_parse_endpoint(entry->known_endpoint, &parsed)) {
+        ok = snprintf(endpoint_out, endpoint_size, "%s", entry->known_endpoint) >= 0 &&
+             strlen(entry->known_endpoint) < endpoint_size;
+    }
+    pthread_mutex_unlock(&network->lock);
+
+    return ok;
+}
+
 bool network_can_launch_pledge(NetworkContext *network, const char *realm_name) {
     AllianceEntry *entry = NULL;
     bool allowed = false;
@@ -2422,6 +2455,7 @@ void network_revert_pledge_pending(NetworkContext *network, const char *realm_na
 void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name,
                                        EnvoyResultStatus status, const char *remote_endpoint) {
     AllianceEntry *entry = NULL;
+    ParsedEndpoint parsed;
 
     if (network == NULL || realm_name == NULL) {
         return;
@@ -2434,7 +2468,10 @@ void network_apply_envoy_pledge_result(NetworkContext *network, const char *real
         switch (status) {
             case ENVOY_RESULT_OK:
                 entry->status = ALLIANCE_ALLIED;
-                (void) remote_endpoint;
+                if (remote_endpoint != NULL && remote_endpoint[0] != '\0' &&
+                    network_parse_endpoint(remote_endpoint, &parsed)) {
+                    (void) network_set_entry_endpoint(entry, remote_endpoint);
+                }
                 break;
             case ENVOY_RESULT_REJECTED:
                 entry->status = ALLIANCE_REJECTED;

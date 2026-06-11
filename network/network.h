@@ -98,6 +98,10 @@ bool network_can_launch_pledge(NetworkContext *network, const char *realm_name);
 bool network_mark_pledge_pending(NetworkContext *network, const char *realm_name);
 void network_revert_pledge_pending(NetworkContext *network, const char *realm_name);
 bool network_can_request_products(NetworkContext *network, const char *realm_name);
+bool network_get_direct_endpoint_for_realm(NetworkContext *network,
+                                           const char *realm,
+                                           char *endpoint_out,
+                                           size_t endpoint_size);
 void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name,
                                        EnvoyResultStatus status, const char *remote_endpoint);
 void network_apply_envoy_products_result(NetworkContext *network, const char *realm_name,

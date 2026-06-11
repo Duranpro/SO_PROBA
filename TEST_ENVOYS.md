@@ -151,3 +151,53 @@ Opcional:
 ```bash
 valgrind --leak-check=full --track-fds=yes ./Maester data/dragonstone/dragonstone.dat data/dragonstone/dragonstone.db
 ```
+
+## 12. Prueba de ruta directa aprendida tras alianza
+
+Escenario:
+
+- A no tiene ruta directa a C, pero puede llegar a C por B o por DEFAULT.
+- A hace `PLEDGE` a C usando hops.
+- C acepta.
+- A debe guardar el endpoint directo de C.
+- Despues `LIST PRODUCTS C` o `START TRADE C` debe usar el endpoint directo aprendido.
+
+Pasos:
+
+1. Lanzar A, B y C segun las configs reales del proyecto.
+2. Desde A:
+
+```text
+PLEDGE C <sigil>
+```
+
+3. Aceptar en C.
+4. Verificar en A:
+
+```text
+PLEDGE STATUS
+```
+
+5. Ejecutar desde A:
+
+```text
+LIST PRODUCTS C
+```
+
+6. Apagar B o romper temporalmente la ruta DEFAULT o el hop usado.
+7. Repetir desde A:
+
+```text
+LIST PRODUCTS C
+```
+
+Esperado:
+
+- Debe seguir funcionando si C sigue vivo.
+- Si falla solo porque B esta apagado, el bug sigue y no se esta usando la ruta directa aprendida.
+
+Comprobacion recomendada:
+
+```bash
+grep -R "direct_endpoint\|known_endpoint\|network_get_direct_endpoint_for_realm" envoy network
+```
