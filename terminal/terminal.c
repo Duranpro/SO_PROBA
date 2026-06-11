@@ -1,12 +1,8 @@
 #include "terminal.h"
 
-#include <errno.h>
-
-#include "../envoy/envoy.h"
 #include "../utils/utils.h"
 #include "commands.h"
 
-<<<<<<< HEAD
 static char *terminal_read_line_with_background(MaesterContext *context, volatile sig_atomic_t *stop_requested) {
 #ifdef _WIN32
     (void) context;
@@ -96,13 +92,6 @@ static char *terminal_read_line_with_background(MaesterContext *context, volatil
     free(buffer);
     return NULL;
 #endif
-=======
-static void terminal_process_sigchld(MaesterContext *context) {
-    if (g_sigchld_pending != 0) {
-        g_sigchld_pending = 0;
-        envoy_reap_finished(context);
-    }
->>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
 }
 
 void terminal_run(MaesterContext *context, volatile sig_atomic_t *stop_requested) {
@@ -111,16 +100,11 @@ void terminal_run(MaesterContext *context, volatile sig_atomic_t *stop_requested
     while (keep_running && (stop_requested == NULL || *stop_requested == 0)) {
         char *line = NULL;
 
-        terminal_process_sigchld(context);
         utils_print("$ ");
         line = terminal_read_line_with_background(context, stop_requested);
         if (line == NULL) {
             if (stop_requested != NULL && *stop_requested != 0) {
                 break;
-            }
-            if (errno == EINTR) {
-                terminal_process_sigchld(context);
-                continue;
             }
             utils_println("");
             break;

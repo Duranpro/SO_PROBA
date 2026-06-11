@@ -14,6 +14,11 @@ static char *transfer_basename_copy(const char *path) {
     }
 
     name = strrchr(path, '/');
+#ifdef _WIN32
+    if (name == NULL) {
+        name = strrchr(path, '\\');
+    }
+#endif
     if (name != NULL) {
         name++;
     } else {
@@ -24,6 +29,13 @@ static char *transfer_basename_copy(const char *path) {
 }
 
 bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH + 1]) {
+#ifdef _WIN32
+    (void) path;
+    if (md5_out != NULL) {
+        md5_out[0] = '\0';
+    }
+    return false;
+#else
     int pipefd[2] = {-1, -1};
     pid_t pid = 0;
     char buffer[256];
@@ -84,6 +96,7 @@ bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH +
     memcpy(md5_out, buffer, CITADEL_MD5_LENGTH);
     md5_out[CITADEL_MD5_LENGTH] = '\0';
     return true;
+#endif
 }
 
 bool transfer_get_file_info(const char *path, char **file_name_out, size_t *size_out,
@@ -245,21 +258,18 @@ static bool transfer_append_product(Product **products, size_t *count, const cha
     return true;
 }
 
-bool transfer_parse_catalog_text(const char *text, Product **products_out, size_t *count_out) {
+bool transfer_parse_catalog_file(const char *path, Product **products_out, size_t *count_out) {
     char *content = NULL;
     char *line = NULL;
     char *saveptr = NULL;
     Product *products = NULL;
     size_t count = 0;
 
-    if (text == NULL || products_out == NULL || count_out == NULL) {
+    if (path == NULL || products_out == NULL || count_out == NULL) {
         return false;
     }
 
-    *products_out = NULL;
-    *count_out = 0;
-
-    content = utils_strdup_safe(text);
+    content = utils_read_file(path, NULL);
     if (content == NULL) {
         return false;
     }
@@ -275,7 +285,6 @@ bool transfer_parse_catalog_text(const char *text, Product **products_out, size_
 
         if (copy == NULL) {
             free(content);
-            stock_free_products(products, count);
             return false;
         }
 
@@ -287,7 +296,6 @@ bool transfer_parse_catalog_text(const char *text, Product **products_out, size_
             if (!transfer_append_product(&products, &count, name, amount, weight)) {
                 free(copy);
                 free(content);
-                stock_free_products(products, count);
                 return false;
             }
         }
@@ -302,39 +310,18 @@ bool transfer_parse_catalog_text(const char *text, Product **products_out, size_
     return true;
 }
 
-bool transfer_parse_catalog_file(const char *path, Product **products_out, size_t *count_out) {
-    char *content = NULL;
-    bool ok = false;
-
-    if (path == NULL || products_out == NULL || count_out == NULL) {
-        return false;
-    }
-
-    content = utils_read_file(path, NULL);
-    if (content == NULL) {
-        return false;
-    }
-
-    ok = transfer_parse_catalog_text(content, products_out, count_out);
-    free(content);
-    return ok;
-}
-
-bool transfer_parse_order_text(const char *text, Product **products_out, size_t *count_out) {
+bool transfer_parse_order_file(const char *path, Product **products_out, size_t *count_out) {
     char *content = NULL;
     char *line = NULL;
     char *saveptr = NULL;
     Product *products = NULL;
     size_t count = 0;
 
-    if (text == NULL || products_out == NULL || count_out == NULL) {
+    if (path == NULL || products_out == NULL || count_out == NULL) {
         return false;
     }
 
-    *products_out = NULL;
-    *count_out = 0;
-
-    content = utils_strdup_safe(text);
+    content = utils_read_file(path, NULL);
     if (content == NULL) {
         return false;
     }
@@ -348,7 +335,6 @@ bool transfer_parse_order_text(const char *text, Product **products_out, size_t 
 
             if (copy == NULL) {
                 free(content);
-                stock_free_products(products, count);
                 return false;
             }
 
@@ -362,7 +348,6 @@ bool transfer_parse_order_text(const char *text, Product **products_out, size_t 
                     if (!transfer_append_product(&products, &count, copy, amount, 0.0f)) {
                         free(copy);
                         free(content);
-                        stock_free_products(products, count);
                         return false;
                     }
                 }
@@ -378,22 +363,4 @@ bool transfer_parse_order_text(const char *text, Product **products_out, size_t 
     *products_out = products;
     *count_out = count;
     return true;
-}
-
-bool transfer_parse_order_file(const char *path, Product **products_out, size_t *count_out) {
-    char *content = NULL;
-    bool ok = false;
-
-    if (path == NULL || products_out == NULL || count_out == NULL) {
-        return false;
-    }
-
-    content = utils_read_file(path, NULL);
-    if (content == NULL) {
-        return false;
-    }
-
-    ok = transfer_parse_order_text(content, products_out, count_out);
-    free(content);
-    return ok;
 }
