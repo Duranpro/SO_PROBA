@@ -828,7 +828,6 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
 
     frame_payload = envoy_worker_frame_data_text(&ack_frame);
     if (frame_payload == NULL || !envoy_worker_payload_starts_with(frame_payload, "OK&")) {
-        free(frame_payload);
         *payload_out = utils_strdup_safe("Trade request was not acknowledged.");
         goto cleanup;
     }
@@ -852,7 +851,6 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
 
     frame_payload = envoy_worker_frame_data_text(&md5_ack_frame);
     if (frame_payload == NULL || !envoy_worker_payload_starts_with(frame_payload, "CHECK_OK&")) {
-        free(frame_payload);
         *payload_out = utils_strdup_safe("Trade order verification failed.");
         goto cleanup;
     }
@@ -1102,7 +1100,6 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
 
     frame_payload = envoy_worker_frame_data_text(&ack_frame);
     if (frame_payload == NULL || !envoy_worker_payload_starts_with(frame_payload, "OK&")) {
-        free(frame_payload);
         *payload_out = utils_strdup_safe("Pledge request was not acknowledged.");
         goto cleanup;
     }
@@ -1127,7 +1124,6 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
 
     frame_payload = envoy_worker_frame_data_text(&md5_ack_frame);
     if (frame_payload == NULL || !envoy_worker_payload_starts_with(frame_payload, "CHECK_OK&")) {
-        free(frame_payload);
         *payload_out = utils_strdup_safe("Pledge sigil verification failed.");
         goto cleanup;
     }
