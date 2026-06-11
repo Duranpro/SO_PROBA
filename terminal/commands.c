@@ -95,10 +95,11 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
                 utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
                 return true;
             }
-            if (!network_has_active_alliance(&context->network, tokens[2])) {
+            if (!network_can_request_products(&context->network, tokens[2])) {
                 commands_print_trade_authorization_error(tokens[2]);
                 return true;
             }
+<<<<<<< HEAD
             envoy_index = commands_assign_envoy(context, ENVOY_MISSION_LIST_PRODUCTS, tokens[2], NULL);
             if (envoy_index < 0) {
                 return true;
@@ -106,6 +107,18 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
             if (!network_request_remote_products(&context->network, tokens[2])) {
                 envoy_manager_complete(&context->envoys, envoy_index, false);
                 utils_println("Could not contact the allied realm.");
+=======
+            if (!envoy_spawn_mission(context, ENVOY_MISSION_PRODUCTS, tokens[2], NULL)) {
+                utils_println("Could not launch the Envoy mission.");
+                return true;
+            }
+            {
+                char *line = NULL;
+                if (asprintf(&line, "Products request sent to %s using Envoy.", tokens[2]) >= 0 && line != NULL) {
+                    utils_println(line);
+                    free(line);
+                }
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
             }
             return true;
         }
@@ -167,13 +180,26 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
             return true;
         }
+<<<<<<< HEAD
         envoy_index = commands_assign_envoy(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2]);
         if (envoy_index < 0) {
             return true;
         }
         if (!network_send_pledge(&context->network, tokens[1], tokens[2])) {
             envoy_manager_complete(&context->envoys, envoy_index, false);
+=======
+        if (!network_can_launch_pledge(&context->network, tokens[1])) {
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
             utils_println("Could not send the pledge request.");
+            return true;
+        }
+        if (!network_mark_pledge_pending(&context->network, tokens[1])) {
+            utils_println("Could not send the pledge request.");
+            return true;
+        }
+        if (!envoy_spawn_mission(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2])) {
+            network_revert_pledge_pending(&context->network, tokens[1]);
+            utils_println("Could not launch the Envoy mission.");
         }
         return true;
     }
@@ -211,7 +237,11 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             commands_print_trade_authorization_error(tokens[2]);
             return true;
         }
+<<<<<<< HEAD
         trade_run_local(&context->config, &context->stock, &context->network, &context->envoys, tokens[2]);
+=======
+        trade_run_local(context, tokens[2]);
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
         return true;
     }
 
@@ -226,6 +256,7 @@ static bool commands_handle_envoy(MaesterContext *context, char **tokens, size_t
     }
 
     if (count == 2 && utils_equals_ignore_case(tokens[1], "STATUS")) {
+<<<<<<< HEAD
         envoy_manager_print_status(&context->envoys);
         return true;
     }
@@ -248,7 +279,27 @@ static bool commands_handle_ping(MaesterContext *context, char **tokens, size_t 
         if (!network_send_ping(&context->network, tokens[1])) {
             utils_println("Could not send PING.");
         }
+=======
+        envoy_print_status(&context->envoys);
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
         return true;
+    }
+
+    if (count >= 4 && utils_equals_ignore_case(tokens[1], "TEST")) {
+        if (utils_equals_ignore_case(tokens[2], "PLEDGE") && count == 4) {
+            (void) envoy_spawn_mission(context, ENVOY_MISSION_PLEDGE, tokens[3], "stub-sigil");
+            return true;
+        }
+
+        if (utils_equals_ignore_case(tokens[2], "PRODUCTS") && count == 4) {
+            (void) envoy_spawn_mission(context, ENVOY_MISSION_PRODUCTS, tokens[3], NULL);
+            return true;
+        }
+
+        if (utils_equals_ignore_case(tokens[2], "TRADE") && count == 5) {
+            (void) envoy_spawn_mission(context, ENVOY_MISSION_TRADE, tokens[3], tokens[4]);
+            return true;
+        }
     }
 
     utils_println("Unknown command");
@@ -285,8 +336,11 @@ bool commands_dispatch(MaesterContext *context, const char *line) {
         keep_running = commands_handle_start(context, tokens, count);
     } else if (utils_equals_ignore_case(tokens[0], "ENVOY")) {
         keep_running = commands_handle_envoy(context, tokens, count);
+<<<<<<< HEAD
     } else if (utils_equals_ignore_case(tokens[0], "PING")) {
         keep_running = commands_handle_ping(context, tokens, count);
+=======
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
     } else if (utils_equals_ignore_case(tokens[0], "EXIT")) {
         if (count == 1) {
             keep_running = false;

@@ -1,21 +1,19 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -D_GNU_SOURCE -pthread
-TARGET = Maester$(EXE)
-
-ifeq ($(OS),Windows_NT)
-LDLIBS = -lws2_32
-RM = del /Q
-EXE = .exe
-else
 LDLIBS =
 RM = rm -f
-EXE =
-endif
+TARGET = Maester
 
 all: $(TARGET)
 
 realm/maester.o: realm/maester.c realm/maester.h utils/system.h utils/utils.h config/config.h stock/stock.h terminal/terminal.h network/network.h envoy/envoy.h
 	$(CC) $(CFLAGS) -c realm/maester.c -o realm/maester.o
+
+envoy/envoy.o: envoy/envoy.c envoy/envoy.h envoy/envoy_worker.h realm/maester.h utils/system.h utils/utils.h
+	$(CC) $(CFLAGS) -c envoy/envoy.c -o envoy/envoy.o
+
+envoy/envoy_worker.o: envoy/envoy_worker.c envoy/envoy_worker.h envoy/envoy.h utils/system.h utils/utils.h
+	$(CC) $(CFLAGS) -c envoy/envoy_worker.c -o envoy/envoy_worker.o
 
 config/config.o: config/config.c config/config.h utils/system.h utils/utils.h
 	$(CC) $(CFLAGS) -c config/config.c -o config/config.o
@@ -47,6 +45,7 @@ network/network.o: network/network.c network/network.h network/frame.h utils/sys
 network/frame.o: network/frame.c network/frame.h utils/system.h
 	$(CC) $(CFLAGS) -c network/frame.c -o network/frame.o
 
+<<<<<<< HEAD
 $(TARGET): realm/maester.o config/config.o stock/stock.o trade/trade.o transfer/transfer.o envoy/envoy.o terminal/terminal.o terminal/commands.o utils/utils.o network/network.o network/frame.o
 	$(CC) $(CFLAGS) realm/maester.o config/config.o stock/stock.o trade/trade.o transfer/transfer.o envoy/envoy.o terminal/terminal.o terminal/commands.o utils/utils.o network/network.o network/frame.o -o $(TARGET) $(LDLIBS)
 
@@ -56,3 +55,10 @@ ifeq ($(OS),Windows_NT)
 else
 	$(RM) realm/*.o config/*.o stock/*.o trade/*.o transfer/*.o envoy/*.o terminal/*.o utils/*.o network/*.o Maester maester
 endif
+=======
+$(TARGET): realm/maester.o envoy/envoy.o envoy/envoy_worker.o config/config.o stock/stock.o trade/trade.o transfer/transfer.o terminal/terminal.o terminal/commands.o utils/utils.o network/network.o network/frame.o
+	$(CC) $(CFLAGS) realm/maester.o envoy/envoy.o envoy/envoy_worker.o config/config.o stock/stock.o trade/trade.o transfer/transfer.o terminal/terminal.o terminal/commands.o utils/utils.o network/network.o network/frame.o -o $(TARGET) $(LDLIBS)
+
+clean:
+	$(RM) realm/*.o envoy/*.o config/*.o stock/*.o trade/*.o transfer/*.o terminal/*.o utils/*.o network/*.o Maester maester
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c

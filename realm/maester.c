@@ -1,9 +1,11 @@
 #include "maester.h"
 
+#include "../envoy/envoy_worker.h"
 #include "../terminal/terminal.h"
 #include "../utils/utils.h"
 
-static volatile sig_atomic_t g_stop_requested = 0;
+volatile sig_atomic_t g_stop_requested = 0;
+volatile sig_atomic_t g_sigchld_pending = 0;
 
 typedef struct {
     char *config_path;
@@ -11,8 +13,11 @@ typedef struct {
 } LaunchPaths;
 
 static void maester_handle_signal(int signal_number) {
-    (void) signal_number;
-    g_stop_requested = 1;
+    if (signal_number == SIGINT) {
+        g_stop_requested = 1;
+    } else if (signal_number == SIGCHLD) {
+        g_sigchld_pending = 1;
+    }
 }
 
 void maester_context_init(MaesterContext *context) {
@@ -23,7 +28,15 @@ void maester_context_init(MaesterContext *context) {
     config_init(&context->config);
     stock_init(&context->stock);
     memset(&context->network, 0, sizeof(context->network));
+<<<<<<< HEAD
     envoy_manager_init_empty(&context->envoys);
+=======
+    context->program_path = NULL;
+    context->config_path = NULL;
+    context->stock_path = NULL;
+    context->envoys.slots = NULL;
+    context->envoys.count = -1;
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
 }
 
 void maester_context_destroy(MaesterContext *context) {
@@ -32,14 +45,31 @@ void maester_context_destroy(MaesterContext *context) {
     }
 
     stock_save(&context->stock);
+<<<<<<< HEAD
     envoy_manager_shutdown(&context->envoys);
+=======
+    envoy_manager_destroy(&context->envoys);
+>>>>>>> 795777dd2388f27e94bd3af97a531f1a701d767c
     network_shutdown(&context->network);
     stock_free(&context->stock);
     config_free(&context->config);
+    free(context->program_path);
+    free(context->config_path);
+    free(context->stock_path);
 }
 
 static bool maester_install_signals(void) {
-    if (signal(SIGINT, maester_handle_signal) == SIG_ERR) {
+    struct sigaction action;
+
+    memset(&action, 0, sizeof(action));
+    sigemptyset(&action.sa_mask);
+    action.sa_handler = maester_handle_signal;
+
+    if (sigaction(SIGINT, &action, NULL) != 0) {
+        return false;
+    }
+
+    if (sigaction(SIGCHLD, &action, NULL) != 0) {
         return false;
     }
 
@@ -150,6 +180,10 @@ int main(int argc, char **argv) {
     MaesterContext context;
     LaunchPaths paths;
 
+    if (argc >= 2 && strcmp(argv[1], "--envoy-worker") == 0) {
+        return envoy_worker_main(argc, argv);
+    }
+
     maester_context_init(&context);
     paths.config_path = NULL;
     paths.stock_path = NULL;
@@ -160,7 +194,17 @@ int main(int argc, char **argv) {
     }
 
     if (!maester_install_signals()) {
-        utils_println("Could not install the SIGINT handler.");
+        utils_println("Could not install signal handlers.");
+        return EXIT_FAILURE;
+    }
+
+    context.program_path = utils_strdup_safe(argv[0]);
+    context.config_path = utils_strdup_safe(paths.config_path);
+    context.stock_path = utils_strdup_safe(paths.stock_path);
+    if (context.program_path == NULL || context.config_path == NULL || context.stock_path == NULL) {
+        utils_println("Not enough memory to store launch paths.");
+        maester_launch_paths_free(&paths);
+        maester_context_destroy(&context);
         return EXIT_FAILURE;
     }
 
@@ -179,6 +223,12 @@ int main(int argc, char **argv) {
     }
 
     maester_launch_paths_free(&paths);
+    if (!envoy_manager_init(&context.envoys, context.config.envoy_count)) {
+        utils_println("Could not initialize the Envoy manager.");
+        maester_context_destroy(&context);
+        return EXIT_FAILURE;
+    }
+
     if (!network_init(&context.network, &context.config, &context.stock)) {
         utils_println("Could not initialize the network.");
         maester_context_destroy(&context);
