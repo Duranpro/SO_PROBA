@@ -432,10 +432,7 @@ void stock_print_local(const Stock *stock) {
     utils_println("--------------------------------------------------------");
     for (i = 0; i < snapshot_count; ++i) {
         char *line = NULL;
-        int written = asprintf(&line, "%s | %d | %.1f\n",
-                               snapshot[i].name,
-                               snapshot[i].amount,
-                               snapshot[i].weight);
+        int written = asprintf(&line, "%s | %d | %.1f\n", snapshot[i].name, snapshot[i].amount, snapshot[i].weight);
         if (written >= 0 && line != NULL) {
             utils_print(line);
             free(line);

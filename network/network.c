@@ -149,12 +149,10 @@ static AllianceEntry *network_find_entry_by_endpoint_locked(NetworkContext *netw
     }
 
     for (i = 0; i < network->alliance_count; ++i) {
-        if (network->alliances[i].known_endpoint != NULL &&
-            strcmp(network->alliances[i].known_endpoint, endpoint) == 0) {
+        if (network->alliances[i].known_endpoint != NULL && strcmp(network->alliances[i].known_endpoint, endpoint) == 0) {
             return &network->alliances[i];
         }
-        if (network->alliances[i].pending_origin_endpoint != NULL &&
-            strcmp(network->alliances[i].pending_origin_endpoint, endpoint) == 0) {
+        if (network->alliances[i].pending_origin_endpoint != NULL && strcmp(network->alliances[i].pending_origin_endpoint, endpoint) == 0) {
             return &network->alliances[i];
         }
     }
@@ -268,10 +266,7 @@ static bool network_store_pending_peer_stable_endpoint(AllianceEntry *entry, con
     return true;
 }
 
-static bool network_copy_route_endpoint(const CitadelConfig *config,
-                                        const char *realm_name,
-                                        char *endpoint_out,
-                                        size_t endpoint_size) {
+static bool network_copy_route_endpoint(const CitadelConfig *config, const char *realm_name, char *endpoint_out, size_t endpoint_size) {
     const RouteInfo *route = NULL;
     int written = 0;
 
@@ -470,8 +465,7 @@ static bool network_resolve_next_endpoint(NetworkContext *network, const char *r
     return false;
 }
 
-static bool network_send_serialized_to_endpoint(const char *endpoint_text,
-                                                const unsigned char buffer[CITADEL_FRAME_SIZE]) {
+static bool network_send_serialized_to_endpoint(const char *endpoint_text, const unsigned char buffer[CITADEL_FRAME_SIZE]) {
     ParsedEndpoint endpoint;
     citadel_socket_t socket_fd = CITADEL_INVALID_SOCKET;
     struct sockaddr_in address;
@@ -571,9 +565,7 @@ static bool network_send_blank_reply(const char *endpoint, uint8_t type, const c
     return ok;
 }
 
-static bool network_send_blank_reply_with_realm_fallback(NetworkContext *network, const char *endpoint,
-                                                         const char *realm_name, uint8_t type,
-                                                         const char *status, const char *ack_realm) {
+static bool network_send_blank_reply_with_realm_fallback(NetworkContext *network, const char *endpoint, const char *realm_name, uint8_t type, const char *status, const char *ack_realm) {
     NetworkFrame frame;
     char *data = NULL;
     char *fallback_endpoint = NULL;
@@ -719,8 +711,7 @@ static bool network_send_auth_error(NetworkContext *network, const char *origin_
     return ok;
 }
 
-static bool network_parse_header_triplet(const char *data_text, char **file_name_out, size_t *size_out,
-                                         char md5_out[CITADEL_MD5_LENGTH + 1]) {
+static bool network_parse_header_triplet(const char *data_text, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     char *copy = NULL;
     char *file_name = NULL;
     char *size_text = NULL;
@@ -740,8 +731,7 @@ static bool network_parse_header_triplet(const char *data_text, char **file_name
     size_text = strtok(NULL, "&");
     md5 = strtok(NULL, "&");
 
-    if (file_name == NULL || size_text == NULL || md5 == NULL || strlen(md5) != CITADEL_MD5_LENGTH ||
-        !utils_parse_int(size_text, &size_value) || size_value < 0) {
+    if (file_name == NULL || size_text == NULL || md5 == NULL || strlen(md5) != CITADEL_MD5_LENGTH || !utils_parse_int(size_text, &size_value) || size_value < 0) {
         free(copy);
         return false;
     }
@@ -759,9 +749,7 @@ static bool network_parse_header_triplet(const char *data_text, char **file_name
     return true;
 }
 
-static bool network_parse_trade_header_payload(const char *data_text, char **origin_realm_out,
-                                               char **file_name_out, size_t *size_out,
-                                               char md5_out[CITADEL_MD5_LENGTH + 1]) {
+static bool network_parse_trade_header_payload(const char *data_text, char **origin_realm_out, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     char *copy = NULL;
     char *first = NULL;
     char *second = NULL;
@@ -787,9 +775,7 @@ static bool network_parse_trade_header_payload(const char *data_text, char **ori
     third = strtok(NULL, "&");
     fourth = strtok(NULL, "&");
 
-    if (first != NULL && second != NULL && third != NULL && fourth != NULL &&
-        strlen(fourth) == CITADEL_MD5_LENGTH &&
-        utils_parse_int(third, &size_value) && size_value >= 0) {
+    if (first != NULL && second != NULL && third != NULL && fourth != NULL && strlen(fourth) == CITADEL_MD5_LENGTH && utils_parse_int(third, &size_value) && size_value >= 0) {
         if (origin_realm_out != NULL) {
             *origin_realm_out = utils_strdup_safe(first);
             if (*origin_realm_out == NULL) {
@@ -819,9 +805,7 @@ static bool network_parse_trade_header_payload(const char *data_text, char **ori
     return network_parse_header_triplet(data_text, file_name_out, size_out, md5_out);
 }
 
-static bool network_begin_inbound_transfer(NetworkContext *network, TransferKind kind, const char *realm_name,
-                                           const char *origin_endpoint, const char *file_name, size_t file_size,
-                                           const char *md5_text) {
+static bool network_begin_inbound_transfer(NetworkContext *network, TransferKind kind, const char *realm_name, const char *origin_endpoint, const char *file_name, size_t file_size, const char *md5_text) {
     char *file_path = NULL;
     int file_fd = -1;
     bool ok = false;
@@ -874,8 +858,7 @@ static bool network_send_outbound_file_data(NetworkContext *network) {
     char *origin = NULL;
     bool ok = true;
 
-    if (network == NULL || !network->outbound.active || network->outbound.file_path == NULL ||
-        network->outbound.realm_name == NULL) {
+    if (network == NULL || !network->outbound.active || network->outbound.file_path == NULL || network->outbound.realm_name == NULL) {
         return false;
     }
 
@@ -905,9 +888,7 @@ static bool network_send_outbound_file_data(NetworkContext *network) {
             break;
         }
 
-        if (!frame_set(&frame, network->outbound.data_type, origin, network->outbound.realm_name,
-                       block, (size_t) bytes) ||
-            !network_send_frame_to_runtime_target(network, &frame)) {
+        if (!frame_set(&frame, network->outbound.data_type, origin, network->outbound.realm_name, block, (size_t) bytes) || !network_send_frame_to_runtime_target(network, &frame)) {
             ok = false;
             break;
         }
@@ -918,9 +899,7 @@ static bool network_send_outbound_file_data(NetworkContext *network) {
     return ok;
 }
 
-static bool network_send_file_data_to_endpoint(NetworkContext *network, const char *endpoint,
-                                               uint8_t frame_type, const char *destination_realm,
-                                               const char *file_path) {
+static bool network_send_file_data_to_endpoint(NetworkContext *network, const char *endpoint, uint8_t frame_type, const char *destination_realm, const char *file_path) {
     int fd = -1;
     unsigned char block[CITADEL_FRAME_DATA_SIZE];
     char *origin = NULL;
@@ -956,8 +935,7 @@ static bool network_send_file_data_to_endpoint(NetworkContext *network, const ch
             break;
         }
 
-        if (!frame_set(&frame, frame_type, origin, destination_realm, block, (size_t) bytes) ||
-            !network_send_frame_to_endpoint(endpoint, &frame)) {
+        if (!frame_set(&frame, frame_type, origin, destination_realm, block, (size_t) bytes) || !network_send_frame_to_endpoint(endpoint, &frame)) {
             ok = false;
             break;
         }
@@ -998,8 +976,7 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
     char *reason = NULL;
     AllianceEntry *entry = NULL;
 
-    if (network == NULL || !network->inbound.active || network->inbound.file_path == NULL ||
-        network->inbound.origin_endpoint == NULL || network->inbound.realm_name == NULL) {
+    if (network == NULL || !network->inbound.active || network->inbound.file_path == NULL || network->inbound.origin_endpoint == NULL || network->inbound.realm_name == NULL) {
         return false;
     }
 
@@ -1011,10 +988,7 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
     ok = transfer_compute_md5sum(network->inbound.file_path, md5) &&
          strcmp(md5, network->inbound.md5) == 0;
 
-    if (!network_send_blank_reply_with_realm_fallback(network, network->inbound.origin_endpoint,
-                                                      network->inbound.realm_name, FRAME_TYPE_MD5_ACK,
-                                                      ok ? "CHECK_OK" : "CHECK_KO",
-                                                      network->config->realm_name)) {
+    if (!network_send_blank_reply_with_realm_fallback(network, network->inbound.origin_endpoint, network->inbound.realm_name, FRAME_TYPE_MD5_ACK, ok ? "CHECK_OK" : "CHECK_KO", network->config->realm_name)) {
         ok = false;
     }
 
@@ -1084,9 +1058,7 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
                     data = NULL;
                 }
 
-                if (data != NULL &&
-                    frame_set(&response, FRAME_TYPE_TRADE_RESPONSE, origin, network->inbound.realm_name,
-                              data, strlen(data))) {
+                if (data != NULL && frame_set(&response, FRAME_TYPE_TRADE_RESPONSE, origin, network->inbound.realm_name, data, strlen(data))) {
                     if (network->inbound.origin_endpoint != NULL) {
                         network_send_frame_to_endpoint(network->inbound.origin_endpoint, &response);
                     } else {
@@ -1122,14 +1094,11 @@ static void network_check_timeouts(NetworkContext *network) {
 
     pthread_mutex_lock(&network->lock);
     for (i = 0; i < network->alliance_count; ++i) {
-        if (network->alliances[i].status == ALLIANCE_PENDING_OUT &&
-            network->alliances[i].deadline > 0 &&
-            now >= network->alliances[i].deadline) {
+        if (network->alliances[i].status == ALLIANCE_PENDING_OUT && network->alliances[i].deadline > 0 && now >= network->alliances[i].deadline) {
             network_mark_timeout(&network->alliances[i]);
             {
                 char *line = NULL;
-                if (asprintf(&line, "Pledge to %s has failed (TIMEOUT).", network->alliances[i].realm_name) >= 0 &&
-                    line != NULL) {
+                if (asprintf(&line, "Pledge to %s has failed (TIMEOUT).", network->alliances[i].realm_name) >= 0 && line != NULL) {
                     network_log_line(line);
                     free(line);
                 }
@@ -1167,8 +1136,7 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
     size_text = strtok(NULL, "&");
     md5 = strtok(NULL, "&");
     origin_stable_endpoint = strtok(NULL, "&");
-    if (origin_realm == NULL || sigil_name == NULL || size_text == NULL || md5 == NULL ||
-        !utils_parse_int(size_text, &size_value) || size_value < 0) {
+    if (origin_realm == NULL || sigil_name == NULL || size_text == NULL || md5 == NULL || !utils_parse_int(size_text, &size_value) || size_value < 0) {
         free(copy);
         return;
     }
@@ -1184,8 +1152,7 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
             memset(route_endpoint, 0, sizeof(route_endpoint));
             if (origin_stable_endpoint != NULL && origin_stable_endpoint[0] != '\0') {
                 ok = network_store_pending_peer_stable_endpoint(entry, origin_stable_endpoint);
-            } else if (network_copy_route_endpoint(network->config, origin_realm,
-                                                   route_endpoint, sizeof(route_endpoint))) {
+            } else if (network_copy_route_endpoint(network->config, origin_realm, route_endpoint, sizeof(route_endpoint))) {
                 ok = network_store_pending_peer_stable_endpoint(entry, route_endpoint);
             } else {
                 ok = network_store_pending_peer_stable_endpoint(entry, NULL);
@@ -1193,14 +1160,12 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
         }
         if (ok) {
             ok = !network->inbound.active &&
-                 network_begin_inbound_transfer(network, TRANSFER_SIGIL, origin_realm, frame->origin,
-                                                sigil_name, (size_t) size_value, md5);
+                 network_begin_inbound_transfer(network, TRANSFER_SIGIL, origin_realm, frame->origin, sigil_name, (size_t) size_value, md5);
         }
     }
     pthread_mutex_unlock(&network->lock);
 
-    network_send_blank_reply_with_realm_fallback(network, frame->origin, origin_realm, FRAME_TYPE_ACK,
-                                                 ok ? "OK" : "KO", network->config->realm_name);
+    network_send_blank_reply_with_realm_fallback(network, frame->origin, origin_realm, FRAME_TYPE_ACK, ok ? "OK" : "KO", network->config->realm_name);
     if (ok) {
         char *line = NULL;
         if (asprintf(&line, "Alliance request received from %s.", origin_realm) >= 0 && line != NULL) {
@@ -1245,8 +1210,7 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
-    if (entry == NULL || entry->status != ALLIANCE_PENDING_OUT || entry->deadline == 0 ||
-        time(NULL) >= entry->deadline) {
+    if (entry == NULL || entry->status != ALLIANCE_PENDING_OUT || entry->deadline == 0 || time(NULL) >= entry->deadline) {
         stale = true;
     } else {
         entry->deadline = 0;
@@ -1275,9 +1239,7 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     if (!stale) {
         char *line = NULL;
-        if (asprintf(&line, "Alliance with %s %s.",
-                     realm_name,
-                     accepted ? "established" : "rejected") >= 0 && line != NULL) {
+        if (asprintf(&line, "Alliance with %s %s.", realm_name, accepted ? "established" : "rejected") >= 0 && line != NULL) {
             utils_println(line);
             free(line);
         }
@@ -1321,12 +1283,8 @@ static void network_handle_products_request(NetworkContext *network, const Netwo
     }
 
     origin = network_build_self_endpoint(network->config);
-    if (origin != NULL &&
-        asprintf(&data, "%s&%zu&%s", file_name, file_size, md5) >= 0 &&
-        frame_set(&header, FRAME_TYPE_PRODUCTS_RESPONSE, origin, origin_realm, data, strlen(data)) &&
-        network_send_frame_to_endpoint(frame->origin, &header)) {
-        sent = network_send_file_data_to_endpoint(network, frame->origin, FRAME_TYPE_PRODUCTS_DATA,
-                                                  origin_realm, file_path);
+    if (origin != NULL && asprintf(&data, "%s&%zu&%s", file_name, file_size, md5) >= 0 && frame_set(&header, FRAME_TYPE_PRODUCTS_RESPONSE, origin, origin_realm, data, strlen(data)) && network_send_frame_to_endpoint(frame->origin, &header)) {
+        sent = network_send_file_data_to_endpoint(network, frame->origin, FRAME_TYPE_PRODUCTS_DATA, origin_realm, file_path);
         if (sent) {
             char *line = NULL;
             if (asprintf(&line, ">>>LIST PRODUCTS request from %s.", origin_realm) >= 0 && line != NULL) {
@@ -1362,13 +1320,11 @@ static void network_handle_products_header(NetworkContext *network, const Networ
     if (network_parse_header_triplet(data, &file_name, &file_size, md5)) {
         pthread_mutex_lock(&network->lock);
         ok = !network->inbound.active &&
-             network_begin_inbound_transfer(network, TRANSFER_PRODUCTS, realm_name, frame->origin,
-                                            file_name, file_size, md5);
+             network_begin_inbound_transfer(network, TRANSFER_PRODUCTS, realm_name, frame->origin, file_name, file_size, md5);
         pthread_mutex_unlock(&network->lock);
     }
 
-    network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK,
-                                                 ok ? "OK" : "KO", network->config->realm_name);
+    network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK, ok ? "OK" : "KO", network->config->realm_name);
     free(file_name);
     free(realm_name);
     free(data);
@@ -1423,13 +1379,11 @@ static void network_handle_trade_header(NetworkContext *network, const NetworkFr
     if (file_name != NULL) {
         pthread_mutex_lock(&network->lock);
         ok = !network->inbound.active &&
-             network_begin_inbound_transfer(network, TRANSFER_ORDER, realm_name, frame->origin,
-                                            file_name, file_size, md5);
+             network_begin_inbound_transfer(network, TRANSFER_ORDER, realm_name, frame->origin, file_name, file_size, md5);
         pthread_mutex_unlock(&network->lock);
     }
 
-    network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK,
-                                                 ok ? "OK" : "KO", network->config->realm_name);
+    network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK, ok ? "OK" : "KO", network->config->realm_name);
     if (ok) {
         char *line = NULL;
         if (asprintf(&line, "Trade request received from %s.", realm_name) >= 0 && line != NULL) {
@@ -1467,8 +1421,7 @@ static void network_handle_file_data(NetworkContext *network, const NetworkFrame
     network_finalize_inbound_transfer(network);
 }
 
-static float network_find_catalog_weight(NetworkContext *network, const char *realm_name,
-                                         const char *product_name, bool *found) {
+static float network_find_catalog_weight(NetworkContext *network, const char *realm_name, const char *product_name, bool *found) {
     AllianceEntry *entry = NULL;
     size_t i = 0;
     float weight = 0.0f;
@@ -1499,10 +1452,7 @@ static float network_find_catalog_weight(NetworkContext *network, const char *re
     return weight;
 }
 
-static void network_restore_stock_snapshot_locked(Stock *stock,
-                                                  Product *snapshot,
-                                                  size_t snapshot_count,
-                                                  char *snapshot_db_path) {
+static void network_restore_stock_snapshot_locked(Stock *stock, Product *snapshot, size_t snapshot_count, char *snapshot_db_path) {
     size_t i = 0;
 
     if (stock == NULL) {
@@ -1521,9 +1471,7 @@ static void network_restore_stock_snapshot_locked(Stock *stock,
     stock->db_path = snapshot_db_path;
 }
 
-static bool network_apply_successful_order_to_local_stock(NetworkContext *network,
-                                                          const char *supplier_realm,
-                                                          const char *order_file_path) {
+static bool network_apply_successful_order_to_local_stock(NetworkContext *network, const char *supplier_realm, const char *order_file_path) {
     char *order_text = NULL;
     char *stock_path_copy = NULL;
     bool applied = false;
@@ -1538,23 +1486,13 @@ static bool network_apply_successful_order_to_local_stock(NetworkContext *networ
     }
 
     stock_path_copy = stock_db_path_copy(network->stock);
-    applied = network_apply_envoy_trade_result(network,
-                                               network->stock,
-                                               stock_path_copy,
-                                               supplier_realm,
-                                               ENVOY_RESULT_OK,
-                                               order_text);
+    applied = network_apply_envoy_trade_result(network, network->stock, stock_path_copy, supplier_realm, ENVOY_RESULT_OK, order_text);
     free(stock_path_copy);
     free(order_text);
     return applied;
 }
 
-bool network_apply_envoy_trade_result(NetworkContext *network,
-                                      Stock *stock,
-                                      const char *stock_path,
-                                      const char *realm,
-                                      EnvoyResultStatus status,
-                                      const char *payload) {
+bool network_apply_envoy_trade_result(NetworkContext *network, Stock *stock, const char *stock_path, const char *realm, EnvoyResultStatus status, const char *payload) {
     Product *items = NULL;
     Product *snapshot = NULL;
     size_t count = 0;
@@ -1627,8 +1565,7 @@ bool network_apply_envoy_trade_result(NetworkContext *network,
         }
 
         {
-            Product *grown = (Product *) realloc(stock->products,
-                                                 sizeof(Product) * (stock->count + 1));
+            Product *grown = (Product *) realloc(stock->products, sizeof(Product) * (stock->count + 1));
             Product *slot = NULL;
 
             if (grown == NULL) {
@@ -1698,10 +1635,7 @@ static void network_handle_trade_response(NetworkContext *network, const Network
     if (entry != NULL) {
         entry->waiting_trade_ack = false;
     }
-    if (network->outbound.active &&
-        network->outbound.kind == TRANSFER_ORDER &&
-        network->outbound.waiting_order_response &&
-        utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
+    if (network->outbound.active && network->outbound.kind == TRANSFER_ORDER && network->outbound.waiting_order_response && utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
         order_file_path = utils_strdup_safe(network->outbound.file_path);
         can_apply = order_file_path != NULL;
         network_outbound_reset(network);
@@ -1762,9 +1696,7 @@ static void network_handle_ack(NetworkContext *network, const NetworkFrame *fram
     }
 
     pthread_mutex_lock(&network->lock);
-    if (network->outbound.active &&
-        network->outbound.waiting_header_ack &&
-        utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
+    if (network->outbound.active && network->outbound.waiting_header_ack && utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
         if (utils_equals_ignore_case(status, "OK")) {
             network->outbound.waiting_header_ack = false;
             network->outbound.waiting_md5_ack = true;
@@ -1821,9 +1753,7 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
     }
 
     pthread_mutex_lock(&network->lock);
-    if (network->outbound.active &&
-        network->outbound.waiting_md5_ack &&
-        utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
+    if (network->outbound.active && network->outbound.waiting_md5_ack && utils_equals_ignore_case(network->outbound.realm_name, realm_name)) {
         if (utils_equals_ignore_case(status, "CHECK_OK")) {
             if (network->outbound.kind == TRANSFER_ORDER) {
                 network->outbound.waiting_md5_ack = false;
@@ -1985,15 +1915,9 @@ static void network_forward_or_discard(NetworkContext *network, const NetworkFra
     char *origin_name = NULL;
     char *line = NULL;
 
-    if (network_resolve_next_endpoint(network, frame->destination, &next_endpoint) &&
-        network_send_frame_to_endpoint(next_endpoint, frame)) {
+    if (network_resolve_next_endpoint(network, frame->destination, &next_endpoint) && network_send_frame_to_endpoint(next_endpoint, frame)) {
         origin_name = network_derive_origin_realm(network, frame);
-        if (asprintf(&line,
-                     ">>> Received hop: %s -> %s (%s)",
-                     origin_name != NULL ? origin_name : frame->origin,
-                     frame->destination,
-                     network_frame_type_text(frame->type)) >= 0 &&
-            line != NULL) {
+        if (asprintf(&line, ">>> Received hop: %s -> %s (%s)", origin_name != NULL ? origin_name : frame->origin, frame->destination, network_frame_type_text(frame->type)) >= 0 && line != NULL) {
             utils_println(line);
             free(line);
         }
@@ -2204,8 +2128,7 @@ static void network_send_disconnects(NetworkContext *network) {
     for (i = 0; i < network->alliance_count; ++i) {
         if (network->alliances[i].status == ALLIANCE_ALLIED && network->alliances[i].known_endpoint != NULL) {
             NetworkFrame frame;
-            if (frame_set(&frame, FRAME_TYPE_DISCONNECT, origin, network->alliances[i].realm_name,
-                          "DISCONNECT", strlen("DISCONNECT"))) {
+            if (frame_set(&frame, FRAME_TYPE_DISCONNECT, origin, network->alliances[i].realm_name, "DISCONNECT", strlen("DISCONNECT"))) {
                 network_send_frame_to_endpoint(network->alliances[i].known_endpoint, &frame);
             }
         }
@@ -2296,8 +2219,7 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
-    if (entry == NULL || entry->status == ALLIANCE_ALLIED || entry->status == ALLIANCE_PENDING_OUT ||
-        network->outbound.active) {
+    if (entry == NULL || entry->status == ALLIANCE_ALLIED || entry->status == ALLIANCE_PENDING_OUT || network->outbound.active) {
         pthread_mutex_unlock(&network->lock);
         free(sigil_path);
         free(file_name);
@@ -2306,9 +2228,7 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
-    if (origin == NULL ||
-        asprintf(&data, "%s&%s&%zu&%s", network->config->realm_name, file_name, file_size, md5) < 0 ||
-        !frame_set(&frame, FRAME_TYPE_PLEDGE, origin, realm_name, data, strlen(data))) {
+    if (origin == NULL || asprintf(&data, "%s&%s&%zu&%s", network->config->realm_name, file_name, file_size, md5) < 0 || !frame_set(&frame, FRAME_TYPE_PLEDGE, origin, realm_name, data, strlen(data))) {
         free(sigil_path);
         free(file_name);
         free(origin);
@@ -2378,12 +2298,7 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
-    if (origin == NULL ||
-        asprintf(&data, accepted ? "%s&%s&%s" : "%s&%s",
-                 accepted ? "ACCEPT" : "REJECT",
-                 network->config->realm_name,
-                 origin) < 0 ||
-        !frame_set(&frame, FRAME_TYPE_PLEDGE_RESPONSE, origin, realm_name, data, strlen(data))) {
+    if (origin == NULL || asprintf(&data, accepted ? "%s&%s&%s" : "%s&%s", accepted ? "ACCEPT" : "REJECT", network->config->realm_name, origin) < 0 || !frame_set(&frame, FRAME_TYPE_PLEDGE_RESPONSE, origin, realm_name, data, strlen(data))) {
         free(origin);
         free(data);
         free(peer_stable_endpoint);
@@ -2421,8 +2336,7 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
 
         {
             char *line = NULL;
-            if (asprintf(&line, "Alliance with %s %s.", realm_name,
-                         accepted ? "established" : "rejected") >= 0 && line != NULL) {
+            if (asprintf(&line, "Alliance with %s %s.", realm_name, accepted ? "established" : "rejected") >= 0 && line != NULL) {
                 utils_println(line);
                 free(line);
             }
@@ -2456,9 +2370,7 @@ bool network_request_remote_products(NetworkContext *network, const char *realm_
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
-    if (origin == NULL ||
-        !frame_set(&frame, FRAME_TYPE_PRODUCTS_REQUEST, origin, realm_name,
-                   network->config->realm_name, strlen(network->config->realm_name))) {
+    if (origin == NULL || !frame_set(&frame, FRAME_TYPE_PRODUCTS_REQUEST, origin, realm_name, network->config->realm_name, strlen(network->config->realm_name))) {
         pthread_mutex_lock(&network->lock);
         entry = network_find_entry_locked(network, realm_name);
         if (entry != NULL) {
@@ -2511,9 +2423,7 @@ bool network_send_trade_offer(NetworkContext *network, const char *realm_name, c
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
-    if (origin == NULL ||
-        asprintf(&data, "%s&%zu&%s", file_name, file_size, md5) < 0 ||
-        !frame_set(&frame, FRAME_TYPE_TRADE_HEADER, origin, realm_name, data, strlen(data))) {
+    if (origin == NULL || asprintf(&data, "%s&%zu&%s", file_name, file_size, md5) < 0 || !frame_set(&frame, FRAME_TYPE_TRADE_HEADER, origin, realm_name, data, strlen(data))) {
         pthread_mutex_lock(&network->lock);
         entry = network_find_entry_locked(network, realm_name);
         if (entry != NULL) {
@@ -2557,8 +2467,7 @@ bool network_send_trade_offer(NetworkContext *network, const char *realm_name, c
     return sent;
 }
 
-bool network_get_remote_products_copy(NetworkContext *network, const char *realm_name,
-                                      Product **products_out, size_t *count_out) {
+bool network_get_remote_products_copy(NetworkContext *network, const char *realm_name, Product **products_out, size_t *count_out) {
     AllianceEntry *entry = NULL;
     Product *copy = NULL;
 
@@ -2583,10 +2492,7 @@ bool network_get_remote_products_copy(NetworkContext *network, const char *realm
     return *products_out != NULL;
 }
 
-bool network_get_direct_endpoint_for_realm(NetworkContext *network,
-                                           const char *realm,
-                                           char *endpoint_out,
-                                           size_t endpoint_size) {
+bool network_get_direct_endpoint_for_realm(NetworkContext *network, const char *realm, char *endpoint_out, size_t endpoint_size) {
     AllianceEntry *entry = NULL;
     ParsedEndpoint parsed;
     bool ok = false;
@@ -2599,10 +2505,7 @@ bool network_get_direct_endpoint_for_realm(NetworkContext *network,
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm);
-    if (entry != NULL &&
-        entry->status == ALLIANCE_ALLIED &&
-        entry->known_endpoint != NULL &&
-        network_parse_endpoint(entry->known_endpoint, &parsed)) {
+    if (entry != NULL && entry->status == ALLIANCE_ALLIED && entry->known_endpoint != NULL && network_parse_endpoint(entry->known_endpoint, &parsed)) {
         ok = snprintf(endpoint_out, endpoint_size, "%s", entry->known_endpoint) >= 0 &&
              strlen(entry->known_endpoint) < endpoint_size;
     }
@@ -2621,10 +2524,7 @@ bool network_can_launch_pledge(NetworkContext *network, const char *realm_name) 
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
-    allowed = (entry != NULL &&
-               entry->status != ALLIANCE_ALLIED &&
-               entry->status != ALLIANCE_PENDING_OUT &&
-               entry->status != ALLIANCE_PENDING_IN);
+    allowed = (entry != NULL && entry->status != ALLIANCE_ALLIED && entry->status != ALLIANCE_PENDING_OUT && entry->status != ALLIANCE_PENDING_IN);
     pthread_mutex_unlock(&network->lock);
     return allowed;
 }
@@ -2639,10 +2539,7 @@ bool network_mark_pledge_pending(NetworkContext *network, const char *realm_name
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm_name);
-    if (entry != NULL &&
-        entry->status != ALLIANCE_ALLIED &&
-        entry->status != ALLIANCE_PENDING_OUT &&
-        entry->status != ALLIANCE_PENDING_IN) {
+    if (entry != NULL && entry->status != ALLIANCE_ALLIED && entry->status != ALLIANCE_PENDING_OUT && entry->status != ALLIANCE_PENDING_IN) {
         entry->status = ALLIANCE_PENDING_OUT;
         entry->deadline = 0;
         marked = true;
@@ -2667,20 +2564,13 @@ void network_revert_pledge_pending(NetworkContext *network, const char *realm_na
     pthread_mutex_unlock(&network->lock);
 }
 
-bool network_prepare_pledge_response_mission(NetworkContext *network,
-                                             const char *realm,
-                                             bool accepted,
-                                             char *target_endpoint_out,
-                                             size_t target_endpoint_size,
-                                             char *peer_stable_endpoint_out,
-                                             size_t peer_stable_endpoint_size) {
+bool network_prepare_pledge_response_mission(NetworkContext *network, const char *realm, bool accepted, char *target_endpoint_out, size_t target_endpoint_size, char *peer_stable_endpoint_out, size_t peer_stable_endpoint_size) {
     AllianceEntry *entry = NULL;
     bool prepared = false;
 
     (void) accepted;
 
-    if (network == NULL || realm == NULL || target_endpoint_out == NULL || target_endpoint_size == 0 ||
-        peer_stable_endpoint_out == NULL || peer_stable_endpoint_size == 0) {
+    if (network == NULL || realm == NULL || target_endpoint_out == NULL || target_endpoint_size == 0 || peer_stable_endpoint_out == NULL || peer_stable_endpoint_size == 0) {
         return false;
     }
 
@@ -2689,22 +2579,14 @@ bool network_prepare_pledge_response_mission(NetworkContext *network,
 
     pthread_mutex_lock(&network->lock);
     entry = network_find_entry_locked(network, realm);
-    if (entry != NULL &&
-        entry->status == ALLIANCE_PENDING_IN &&
-        entry->sigil_verified &&
-        !entry->pledge_response_in_progress &&
-        entry->pending_origin_endpoint != NULL &&
-        entry->pending_origin_endpoint[0] != '\0') {
+    if (entry != NULL && entry->status == ALLIANCE_PENDING_IN && entry->sigil_verified && !entry->pledge_response_in_progress && entry->pending_origin_endpoint != NULL && entry->pending_origin_endpoint[0] != '\0') {
         int written_target = snprintf(target_endpoint_out, target_endpoint_size, "%s", entry->pending_origin_endpoint);
         int written_peer = 0;
 
         if (written_target >= 0 && (size_t) written_target < target_endpoint_size) {
             prepared = true;
             if (entry->pending_peer_stable_endpoint != NULL && entry->pending_peer_stable_endpoint[0] != '\0') {
-                written_peer = snprintf(peer_stable_endpoint_out,
-                                        peer_stable_endpoint_size,
-                                        "%s",
-                                        entry->pending_peer_stable_endpoint);
+                written_peer = snprintf(peer_stable_endpoint_out, peer_stable_endpoint_size, "%s", entry->pending_peer_stable_endpoint);
                 if (written_peer < 0 || (size_t) written_peer >= peer_stable_endpoint_size) {
                     prepared = false;
                 }
@@ -2738,8 +2620,7 @@ void network_revert_pledge_response_mission(NetworkContext *network, const char 
     pthread_mutex_unlock(&network->lock);
 }
 
-void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name,
-                                       EnvoyResultStatus status, const char *remote_endpoint) {
+void network_apply_envoy_pledge_result(NetworkContext *network, const char *realm_name, EnvoyResultStatus status, const char *remote_endpoint) {
     AllianceEntry *entry = NULL;
     ParsedEndpoint parsed;
 
@@ -2772,11 +2653,7 @@ void network_apply_envoy_pledge_result(NetworkContext *network, const char *real
     pthread_mutex_unlock(&network->lock);
 }
 
-void network_apply_envoy_pledge_response_result(NetworkContext *network,
-                                                const char *realm,
-                                                bool accepted,
-                                                EnvoyResultStatus status,
-                                                const char *peer_stable_endpoint) {
+void network_apply_envoy_pledge_response_result(NetworkContext *network, const char *realm, bool accepted, EnvoyResultStatus status, const char *peer_stable_endpoint) {
     AllianceEntry *entry = NULL;
     ParsedEndpoint parsed;
 
@@ -2796,8 +2673,7 @@ void network_apply_envoy_pledge_response_result(NetworkContext *network,
                 if (peer_stable_endpoint != NULL && peer_stable_endpoint[0] != '\0' &&
                     network_parse_endpoint(peer_stable_endpoint, &parsed)) {
                     (void) network_set_entry_endpoint(entry, peer_stable_endpoint);
-                } else if (entry->pending_peer_stable_endpoint != NULL &&
-                           network_parse_endpoint(entry->pending_peer_stable_endpoint, &parsed)) {
+                } else if (entry->pending_peer_stable_endpoint != NULL && network_parse_endpoint(entry->pending_peer_stable_endpoint, &parsed)) {
                     (void) network_set_entry_endpoint(entry, entry->pending_peer_stable_endpoint);
                 }
             } else {
@@ -2827,8 +2703,7 @@ bool network_can_request_products(NetworkContext *network, const char *realm_nam
     return allowed;
 }
 
-void network_apply_envoy_products_result(NetworkContext *network, const char *realm_name,
-                                         const char *payload) {
+void network_apply_envoy_products_result(NetworkContext *network, const char *realm_name, const char *payload) {
     AllianceEntry *entry = NULL;
     Product *products = NULL;
     size_t count = 0;

@@ -60,20 +60,9 @@ void envoy_manager_destroy(EnvoyManager *manager);
 void envoy_print_status(EnvoyManager *manager);
 void envoy_reap_finished(struct MaesterContext *context);
 void envoy_kill_all(EnvoyManager *manager);
-bool envoy_spawn_mission(struct MaesterContext *context,
-                         EnvoyMissionType type,
-                         const char *realm,
-                         const char *file_path);
-bool envoy_spawn_pledge_response(struct MaesterContext *context,
-                                 const char *realm,
-                                 bool accepted,
-                                 const char *target_endpoint,
-                                 const char *peer_stable_endpoint);
-bool envoy_result_write(int fd,
-                        const EnvoyResultHeader *header,
-                        const void *payload);
-bool envoy_result_read(int fd,
-                       EnvoyResultHeader *header,
-                       char **payload_out);
+bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, const char *realm, const char *file_path);
+bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *realm, bool accepted, const char *target_endpoint, const char *peer_stable_endpoint);
+bool envoy_result_write(int fd, const EnvoyResultHeader *header, const void *payload);
+bool envoy_result_read(int fd, EnvoyResultHeader *header, char **payload_out);
 
 #endif

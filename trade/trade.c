@@ -123,8 +123,7 @@ static bool trade_remove_item(TradeSession *session, const char *product_name, i
             if (session->items[i].amount <= amount) {
                 free(session->items[i].name);
                 if (i + 1 < session->count) {
-                    memmove(&session->items[i], &session->items[i + 1],
-                            sizeof(TradeItem) * (session->count - i - 1));
+                    memmove(&session->items[i], &session->items[i + 1], sizeof(TradeItem) * (session->count - i - 1));
                 }
                 session->count--;
             } else {
@@ -160,8 +159,7 @@ static bool trade_append_text(char **content, const char *suffix) {
     return true;
 }
 
-static bool trade_write_shopping_list(const TradeSession *session, char **file_path_out,
-                                      char **file_name_out, size_t *file_size_out) {
+static bool trade_write_shopping_list(const TradeSession *session, char **file_path_out, char **file_name_out, size_t *file_size_out) {
     char *file_name = NULL;
     char *path = NULL;
     char *content = NULL;
@@ -187,9 +185,7 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
         return false;
     }
 
-    written = asprintf(&content, "Requester: %s\nTarget: %s\nItems:\n",
-                       session->context->config.realm_name,
-                       session->target_realm);
+    written = asprintf(&content, "Requester: %s\nTarget: %s\nItems:\n", session->context->config.realm_name, session->target_realm);
     if (written < 0 || content == NULL) {
         free(path);
         return false;
@@ -217,8 +213,7 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
 
     {
         char *summary = NULL;
-        written = asprintf(&summary, "Local stock loaded: %zu products\n",
-                           stock_count(&session->context->stock));
+        written = asprintf(&summary, "Local stock loaded: %zu products\n", stock_count(&session->context->stock));
         if (written < 0 || summary == NULL) {
             free(path);
             free(content);
@@ -284,27 +279,21 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
 
     {
         char *message = NULL;
-        int written = asprintf(&message,
-                               "Trade with %s begins.\n"
-                               "A direct path is open; your houses are allied, and no intermediaries stand in between.\n",
-                               session.target_realm);
+        int written = asprintf(&message, "Trade with %s begins.\n" "A direct path is open; your houses are allied, and no intermediaries stand in between.\n", session.target_realm);
         if (written >= 0 && message != NULL) {
             utils_print(message);
             free(message);
         }
     }
 
-    if (context->network.initialized &&
-        network_get_remote_products_copy(&context->network, session.target_realm,
-                                         &session.available_products, &session.available_count)) {
+    if (context->network.initialized && network_get_remote_products_copy(&context->network, session.target_realm, &session.available_products, &session.available_count)) {
         size_t i = 0;
         char *line2 = utils_strdup_safe("Available products: ");
         if (line2 != NULL) {
             for (i = 0; i < session.available_count; ++i) {
                 char *new_line = NULL;
                 const char *separator = (i + 1 < session.available_count) ? ", " : ".";
-                if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].name, separator) >= 0 &&
-                    new_line != NULL) {
+                if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].name, separator) >= 0 && new_line != NULL) {
                     free(line2);
                     line2 = new_line;
                 }
@@ -378,9 +367,7 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
                         free(file_name);
                     } else {
                         char *message = NULL;
-                        int written = asprintf(&message,
-                                               "Trade list has been dispatched to %s.",
-                                               session.target_realm);
+                        int written = asprintf(&message, "Trade list has been dispatched to %s.", session.target_realm);
                         free(file_path);
                         free(file_name);
                         if (written >= 0 && message != NULL) {

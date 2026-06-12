@@ -110,10 +110,7 @@ static ssize_t envoy_worker_read_exact(int fd, void *buffer, size_t size) {
     return (ssize_t) total;
 }
 
-static bool envoy_worker_parse_endpoint(const char *endpoint,
-                                        char *ip_out,
-                                        size_t ip_size,
-                                        int *port_out) {
+static bool envoy_worker_parse_endpoint(const char *endpoint, char *ip_out, size_t ip_size, int *port_out) {
     const char *separator = NULL;
     long port_value = 0;
     char *end = NULL;
@@ -146,10 +143,7 @@ static bool envoy_worker_parse_endpoint(const char *endpoint,
     return true;
 }
 
-static bool envoy_worker_build_endpoint(const char *ip,
-                                        int port,
-                                        char *out,
-                                        size_t out_size) {
+static bool envoy_worker_build_endpoint(const char *ip, int port, char *out, size_t out_size) {
     int written = 0;
 
     if (ip == NULL || out == NULL || out_size == 0 || port < 1 || port > 65535) {
@@ -160,9 +154,7 @@ static bool envoy_worker_build_endpoint(const char *ip,
     return written >= 0 && (size_t) written < out_size;
 }
 
-static int envoy_worker_create_private_listener(const CitadelConfig *config,
-                                                char *endpoint_out,
-                                                size_t endpoint_size) {
+static int envoy_worker_create_private_listener(const CitadelConfig *config, char *endpoint_out, size_t endpoint_size) {
     int listener_fd = -1;
     int option = 1;
     struct sockaddr_in address;
@@ -188,8 +180,7 @@ static int envoy_worker_create_private_listener(const CitadelConfig *config,
     address.sin_family = AF_INET;
     address.sin_port = htons(0);
 
-    if (config->ip != NULL && inet_pton(AF_INET, config->ip, &address.sin_addr) > 0 &&
-        bind(listener_fd, (struct sockaddr *) &address, sizeof(address)) == 0) {
+    if (config->ip != NULL && inet_pton(AF_INET, config->ip, &address.sin_addr) > 0 && bind(listener_fd, (struct sockaddr *) &address, sizeof(address)) == 0) {
         endpoint_ip = config->ip;
     } else {
         memset(&address, 0, sizeof(address));
@@ -216,10 +207,7 @@ static int envoy_worker_create_private_listener(const CitadelConfig *config,
         return -1;
     }
 
-    if (!envoy_worker_build_endpoint(endpoint_ip,
-                                     (int) ntohs(bound_address.sin_port),
-                                     endpoint_out,
-                                     endpoint_size)) {
+    if (!envoy_worker_build_endpoint(endpoint_ip, (int) ntohs(bound_address.sin_port), endpoint_out, endpoint_size)) {
         close(listener_fd);
         return -1;
     }
@@ -258,8 +246,7 @@ static int envoy_worker_connect_endpoint(const char *endpoint) {
     return socket_fd;
 }
 
-static bool envoy_worker_send_frame_to_endpoint(const char *endpoint,
-                                                const NetworkFrame *frame) {
+static bool envoy_worker_send_frame_to_endpoint(const char *endpoint, const NetworkFrame *frame) {
     int socket_fd = -1;
     unsigned char buffer[CITADEL_FRAME_SIZE];
 
@@ -290,10 +277,7 @@ static bool envoy_worker_route_has_address(const RouteInfo *route) {
     return strcmp(route->ip, "*.*.*.*") != 0;
 }
 
-static bool envoy_worker_resolve_realm_endpoint(const EnvoyWorkerContext *ctx,
-                                                const char *realm,
-                                                char *endpoint_out,
-                                                size_t endpoint_size) {
+static bool envoy_worker_resolve_realm_endpoint(const EnvoyWorkerContext *ctx, const char *realm, char *endpoint_out, size_t endpoint_size) {
     const RouteInfo *route = NULL;
 
     if (ctx == NULL || realm == NULL || endpoint_out == NULL || endpoint_size == 0) {
@@ -317,9 +301,7 @@ static bool envoy_worker_resolve_realm_endpoint(const EnvoyWorkerContext *ctx,
     return envoy_worker_build_endpoint(route->ip, route->port, endpoint_out, endpoint_size);
 }
 
-static bool envoy_worker_send_frame_to_realm(const EnvoyWorkerContext *ctx,
-                                             const char *realm,
-                                             const NetworkFrame *frame) {
+static bool envoy_worker_send_frame_to_realm(const EnvoyWorkerContext *ctx, const char *realm, const NetworkFrame *frame) {
     char endpoint[128];
 
     if (!envoy_worker_resolve_realm_endpoint(ctx, realm, endpoint, sizeof(endpoint))) {
@@ -329,9 +311,7 @@ static bool envoy_worker_send_frame_to_realm(const EnvoyWorkerContext *ctx,
     return envoy_worker_send_frame_to_endpoint(endpoint, frame);
 }
 
-static bool envoy_worker_accept_frame_timeout(int listener_fd,
-                                              int timeout_seconds,
-                                              NetworkFrame *frame_out) {
+static bool envoy_worker_accept_frame_timeout(int listener_fd, int timeout_seconds, NetworkFrame *frame_out) {
     while (true) {
         fd_set readfds;
         struct timeval timeout;
@@ -385,10 +365,7 @@ static bool envoy_worker_accept_frame_timeout(int listener_fd,
     }
 }
 
-static bool envoy_worker_send_ack(const char *endpoint,
-                                  const char *origin_endpoint,
-                                  const char *destination,
-                                  const char *status) {
+static bool envoy_worker_send_ack(const char *endpoint, const char *origin_endpoint, const char *destination, const char *status) {
     NetworkFrame frame;
 
     if (endpoint == NULL || origin_endpoint == NULL || destination == NULL || status == NULL) {
@@ -402,10 +379,7 @@ static bool envoy_worker_send_ack(const char *endpoint,
     return envoy_worker_send_frame_to_endpoint(endpoint, &frame);
 }
 
-static bool envoy_worker_send_md5_ack(const char *endpoint,
-                                      const char *origin_endpoint,
-                                      const char *destination,
-                                      const char *status) {
+static bool envoy_worker_send_md5_ack(const char *endpoint, const char *origin_endpoint, const char *destination, const char *status) {
     NetworkFrame frame;
 
     if (endpoint == NULL || origin_endpoint == NULL || destination == NULL || status == NULL) {
@@ -494,14 +468,7 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
         context->peer_stable_endpoint = utils_strdup_safe("");
     }
 
-    if (!(context->pipe_fd >= 0 &&
-           context->envoy_id > 0 &&
-           context->mission_type != ENVOY_MISSION_NONE &&
-           context->config_path != NULL &&
-           context->stock_path != NULL &&
-           context->realm != NULL &&
-           context->file_path != NULL &&
-           context->peer_stable_endpoint != NULL)) {
+    if (!(context->pipe_fd >= 0 && context->envoy_id > 0 && context->mission_type != ENVOY_MISSION_NONE && context->config_path != NULL && context->stock_path != NULL && context->realm != NULL && context->file_path != NULL && context->peer_stable_endpoint != NULL)) {
         return false;
     }
 
@@ -509,17 +476,13 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
         return context->response_action != NULL &&
                context->target_endpoint != NULL &&
                context->target_endpoint[0] != '\0' &&
-               (utils_equals_ignore_case(context->response_action, "ACCEPT") ||
-                utils_equals_ignore_case(context->response_action, "REJECT"));
+               (utils_equals_ignore_case(context->response_action, "ACCEPT") || utils_equals_ignore_case(context->response_action, "REJECT"));
     }
 
     return true;
 }
 
-static bool envoy_worker_wait_frame_type(int listener_fd,
-                                         int expected_type,
-                                         int timeout_seconds,
-                                         NetworkFrame *out) {
+static bool envoy_worker_wait_frame_type(int listener_fd, int expected_type, int timeout_seconds, NetworkFrame *out) {
     time_t deadline = time(NULL) + timeout_seconds;
 
     if (listener_fd < 0 || timeout_seconds < 0 || out == NULL) {
@@ -562,10 +525,7 @@ static bool envoy_worker_payload_starts_with(const char *payload, const char *pr
     return strncmp(payload, prefix, strlen(prefix)) == 0;
 }
 
-static bool envoy_worker_parse_header_triplet(const char *text,
-                                              char **file_name_out,
-                                              size_t *size_out,
-                                              char md5_out[CITADEL_MD5_LENGTH + 1]) {
+static bool envoy_worker_parse_header_triplet(const char *text, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     char *copy = NULL;
     char *file_name = NULL;
     char *size_text = NULL;
@@ -614,11 +574,7 @@ static bool envoy_worker_parse_header_triplet(const char *text,
     return true;
 }
 
-static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx,
-                                             const char *origin_endpoint,
-                                             const char *destination_realm,
-                                             const char *file_path,
-                                             uint8_t frame_type) {
+static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx, const char *origin_endpoint, const char *destination_realm, const char *file_path, uint8_t frame_type) {
     int fd = -1;
     unsigned char block[CITADEL_FRAME_DATA_SIZE];
     bool ok = true;
@@ -647,8 +603,7 @@ static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx,
             break;
         }
 
-        if (!frame_set(&frame, frame_type, origin_endpoint, destination_realm, block, (size_t) bytes) ||
-            !envoy_worker_send_frame_to_realm(ctx, destination_realm, &frame)) {
+        if (!frame_set(&frame, frame_type, origin_endpoint, destination_realm, block, (size_t) bytes) || !envoy_worker_send_frame_to_realm(ctx, destination_realm, &frame)) {
             ok = false;
             break;
         }
@@ -658,12 +613,7 @@ static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx,
     return ok;
 }
 
-static bool envoy_worker_receive_file_payload(int listener_fd,
-                                              int expected_type,
-                                              size_t expected_size,
-                                              int timeout_seconds,
-                                              char **data_out,
-                                              size_t *data_size_out) {
+static bool envoy_worker_receive_file_payload(int listener_fd, int expected_type, size_t expected_size, int timeout_seconds, char **data_out, size_t *data_size_out) {
     time_t deadline = 0;
     char *buffer = NULL;
     size_t total = 0;
@@ -718,10 +668,7 @@ static bool envoy_worker_receive_file_payload(int listener_fd,
     return true;
 }
 
-static bool envoy_worker_compute_md5_from_memory(EnvoyWorkerContext *ctx,
-                                                 const char *data,
-                                                 size_t size,
-                                                 char md5_out[CITADEL_MD5_LENGTH + 1]) {
+static bool envoy_worker_compute_md5_from_memory(EnvoyWorkerContext *ctx, const char *data, size_t size, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     char *template_path = NULL;
     int fd = -1;
     bool ok = false;
@@ -756,10 +703,7 @@ static bool envoy_worker_compute_md5_from_memory(EnvoyWorkerContext *ctx,
     return ok;
 }
 
-static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
-                                                char *remote_endpoint_out,
-                                                size_t remote_endpoint_size,
-                                                char **payload_out) {
+static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     char *order_text = NULL;
     char *file_name = NULL;
     size_t file_size = 0;
@@ -808,21 +752,14 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
         return ENVOY_RESULT_FAILED;
     }
 
-    if (asprintf(&header_payload, "%s&%s&%zu&%s", ctx->config.realm_name, file_name, file_size, md5) < 0 ||
-        header_payload == NULL ||
-        !frame_set(&trade_header, FRAME_TYPE_TRADE_HEADER, private_endpoint, ctx->realm,
-                   header_payload, strlen(header_payload)) ||
-        !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &trade_header)) {
+    if (asprintf(&header_payload, "%s&%s&%zu&%s", ctx->config.realm_name, file_name, file_size, md5) < 0 || header_payload == NULL || !frame_set(&trade_header, FRAME_TYPE_TRADE_HEADER, private_endpoint, ctx->realm, header_payload, strlen(header_payload)) || !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &trade_header)) {
         *payload_out = utils_strdup_safe("Could not send trade header.");
         goto cleanup;
     }
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK,
-                                      ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &ack_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK, ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &ack_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for trade ACK." :
-                                         "Invalid trade ACK received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for trade ACK." : "Invalid trade ACK received.");
         goto cleanup;
     }
 
@@ -834,18 +771,14 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm,
-                                          ctx->file_path, FRAME_TYPE_TRADE_DATA)) {
+    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm, ctx->file_path, FRAME_TYPE_TRADE_DATA)) {
         *payload_out = utils_strdup_safe("Could not send trade order data.");
         goto cleanup;
     }
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_MD5_ACK,
-                                      ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &md5_ack_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_MD5_ACK, ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &md5_ack_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for trade MD5 ACK." :
-                                         "Invalid trade MD5 ACK received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for trade MD5 ACK." : "Invalid trade MD5 ACK received.");
         goto cleanup;
     }
 
@@ -857,12 +790,9 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx,
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_TRADE_RESPONSE,
-                                      ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &response_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_TRADE_RESPONSE, ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &response_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for trade response." :
-                                         "Invalid trade response received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for trade response." : "Invalid trade response received.");
         goto cleanup;
     }
 
@@ -896,10 +826,7 @@ cleanup:
     return result;
 }
 
-static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ctx,
-                                                          char *remote_endpoint_out,
-                                                          size_t remote_endpoint_size,
-                                                          char **payload_out) {
+static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     int listener_fd = -1;
     char private_endpoint[128];
     char local_stable_endpoint[128];
@@ -910,8 +837,7 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
     bool accepted = false;
     EnvoyResultStatus result = ENVOY_RESULT_FAILED;
 
-    if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL ||
-        ctx->target_endpoint == NULL || ctx->response_action == NULL) {
+    if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL || ctx->target_endpoint == NULL || ctx->response_action == NULL) {
         return ENVOY_RESULT_FAILED;
     }
 
@@ -929,8 +855,7 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
         return ENVOY_RESULT_FAILED;
     }
 
-    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port,
-                                     local_stable_endpoint, sizeof(local_stable_endpoint))) {
+    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port, local_stable_endpoint, sizeof(local_stable_endpoint))) {
         *payload_out = utils_strdup_safe("Could not build local stable endpoint.");
         return ENVOY_RESULT_FAILED;
     }
@@ -941,24 +866,14 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
         return ENVOY_RESULT_FAILED;
     }
 
-    if ((accepted &&
-         asprintf(&response_text, "ACCEPT&%s&%s", ctx->config.realm_name, local_stable_endpoint) < 0) ||
-        (!accepted &&
-         asprintf(&response_text, "REJECT&%s", ctx->config.realm_name) < 0) ||
-        response_text == NULL ||
-        !frame_set(&response_frame, FRAME_TYPE_PLEDGE_RESPONSE, private_endpoint, ctx->realm,
-                   response_text, strlen(response_text)) ||
-        !envoy_worker_send_frame_to_endpoint(ctx->target_endpoint, &response_frame)) {
+    if ((accepted && asprintf(&response_text, "ACCEPT&%s&%s", ctx->config.realm_name, local_stable_endpoint) < 0) || (!accepted && asprintf(&response_text, "REJECT&%s", ctx->config.realm_name) < 0) || response_text == NULL || !frame_set(&response_frame, FRAME_TYPE_PLEDGE_RESPONSE, private_endpoint, ctx->realm, response_text, strlen(response_text)) || !envoy_worker_send_frame_to_endpoint(ctx->target_endpoint, &response_frame)) {
         *payload_out = utils_strdup_safe("Could not send pledge response.");
         goto cleanup;
     }
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK,
-                                      ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for final ACK." :
-                                         "Invalid final ACK received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for final ACK." : "Invalid final ACK received.");
         goto cleanup;
     }
 
@@ -984,10 +899,7 @@ cleanup:
     return result;
 }
 
-static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx,
-                                               char *remote_endpoint_out,
-                                               size_t remote_endpoint_size,
-                                               char **payload_out) {
+static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     int listener_fd = -1;
     char endpoint[128];
     char message[256];
@@ -1010,9 +922,7 @@ static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx,
 
     close(listener_fd);
 
-    if (snprintf(message, sizeof(message),
-                 "Envoy worker stub executed correctly. Private endpoint: %s",
-                 endpoint) >= 0) {
+    if (snprintf(message, sizeof(message), "Envoy worker stub executed correctly. Private endpoint: %s", endpoint) >= 0) {
         *payload_out = utils_strdup_safe(message);
     } else {
         *payload_out = utils_strdup_safe("Envoy worker stub executed correctly");
@@ -1021,10 +931,7 @@ static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx,
     return ENVOY_RESULT_FAILED;
 }
 
-static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
-                                                 char *remote_endpoint_out,
-                                                 size_t remote_endpoint_size,
-                                                 char **payload_out) {
+static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     char *sigil_path = NULL;
     char *file_name = NULL;
     char stable_endpoint[128];
@@ -1071,30 +978,16 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
         return ENVOY_RESULT_FAILED;
     }
 
-    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port,
-                                     stable_endpoint, sizeof(stable_endpoint)) ||
-        asprintf(&payload_text, "%s&%s&%zu&%s&%s",
-                 ctx->config.realm_name,
-                 file_name,
-                 file_size,
-                 md5,
-                 stable_endpoint) < 0 ||
-        payload_text == NULL ||
-        !frame_set(&pledge_frame, FRAME_TYPE_PLEDGE, private_endpoint, ctx->realm,
-                   payload_text, strlen(payload_text)) ||
-        !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &pledge_frame)) {
+    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port, stable_endpoint, sizeof(stable_endpoint)) || asprintf(&payload_text, "%s&%s&%zu&%s&%s", ctx->config.realm_name, file_name, file_size, md5, stable_endpoint) < 0 || payload_text == NULL || !frame_set(&pledge_frame, FRAME_TYPE_PLEDGE, private_endpoint, ctx->realm, payload_text, strlen(payload_text)) || !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &pledge_frame)) {
         *payload_out = utils_strdup_safe("Could not send pledge request.");
         goto cleanup;
     }
     free(payload_text);
     payload_text = NULL;
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK,
-                                      ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for pledge ACK." :
-                                         "Invalid pledge ACK received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for pledge ACK." : "Invalid pledge ACK received.");
         goto cleanup;
     }
 
@@ -1106,19 +999,14 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm,
-                                          sigil_path, FRAME_TYPE_SIGIL_DATA)) {
+    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm, sigil_path, FRAME_TYPE_SIGIL_DATA)) {
         *payload_out = utils_strdup_safe("Could not send pledge sigil data.");
         goto cleanup;
     }
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_MD5_ACK,
-                                      ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS,
-                                      &md5_ack_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_MD5_ACK, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &md5_ack_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for MD5 ACK." :
-                                         "Invalid MD5 ACK received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for MD5 ACK." : "Invalid MD5 ACK received.");
         goto cleanup;
     }
 
@@ -1130,13 +1018,9 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx,
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_PLEDGE_RESPONSE,
-                                      ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS,
-                                      &response_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_PLEDGE_RESPONSE, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &response_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for pledge response." :
-                                         "Invalid pledge response received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for pledge response." : "Invalid pledge response received.");
         goto cleanup;
     }
 
@@ -1199,10 +1083,7 @@ cleanup:
     return result;
 }
 
-static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx,
-                                                   char *remote_endpoint_out,
-                                                   size_t remote_endpoint_size,
-                                                   char **payload_out) {
+static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     int listener_fd = -1;
     char private_endpoint[128];
     NetworkFrame request_frame;
@@ -1236,19 +1117,14 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx,
         return ENVOY_RESULT_FAILED;
     }
 
-    if (!frame_set(&request_frame, FRAME_TYPE_PRODUCTS_REQUEST, private_endpoint, ctx->realm,
-                   ctx->config.realm_name, strlen(ctx->config.realm_name)) ||
-        !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &request_frame)) {
+    if (!frame_set(&request_frame, FRAME_TYPE_PRODUCTS_REQUEST, private_endpoint, ctx->realm, ctx->config.realm_name, strlen(ctx->config.realm_name)) || !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &request_frame)) {
         *payload_out = utils_strdup_safe("Could not send products request.");
         goto cleanup;
     }
 
-    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_PRODUCTS_RESPONSE,
-                                      ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS, &response_frame)) {
+    if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_PRODUCTS_RESPONSE, ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS, &response_frame)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out waiting for products response." :
-                                         "Invalid products response received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for products response." : "Invalid products response received.");
         goto cleanup;
     }
 
@@ -1256,8 +1132,7 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx,
     remote_endpoint_out[remote_endpoint_size - 1] = '\0';
 
     response_text = envoy_worker_frame_data_text(&response_frame);
-    if (response_text == NULL ||
-        !envoy_worker_parse_header_triplet(response_text, &file_name, &expected_size, expected_md5)) {
+    if (response_text == NULL || !envoy_worker_parse_header_triplet(response_text, &file_name, &expected_size, expected_md5)) {
         *payload_out = utils_strdup_safe("Invalid products response received.");
         goto cleanup;
     }
@@ -1268,13 +1143,9 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx,
         goto cleanup;
     }
 
-    if (!envoy_worker_receive_file_payload(listener_fd, FRAME_TYPE_PRODUCTS_DATA, expected_size,
-                                           ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS,
-                                           &catalog_text, &catalog_size)) {
+    if (!envoy_worker_receive_file_payload(listener_fd, FRAME_TYPE_PRODUCTS_DATA, expected_size, ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS, &catalog_text, &catalog_size)) {
         result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ?
-                                         "Timed out receiving products data." :
-                                         "Invalid products data received.");
+        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out receiving products data." : "Invalid products data received.");
         goto cleanup;
     }
 
@@ -1283,9 +1154,7 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx,
         goto cleanup;
     }
 
-    snprintf(md5_payload, sizeof(md5_payload), "%s&%s",
-             strcmp(actual_md5, expected_md5) == 0 ? "CHECK_OK" : "CHECK_KO",
-             ctx->config.realm_name);
+    snprintf(md5_payload, sizeof(md5_payload), "%s&%s", strcmp(actual_md5, expected_md5) == 0 ? "CHECK_OK" : "CHECK_KO", ctx->config.realm_name);
     if (!envoy_worker_send_md5_ack(response_frame.origin, private_endpoint, "", md5_payload)) {
         *payload_out = utils_strdup_safe("Could not send products MD5 acknowledgement.");
         goto cleanup;
@@ -1332,8 +1201,7 @@ int envoy_worker_main(int argc, char **argv) {
         payload_text = utils_strdup_safe("Envoy worker could not load config.");
     } else if (context.mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
         result = envoy_worker_run_pledge_response(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
-    } else if (context.mission_type == ENVOY_MISSION_PLEDGE &&
-               strcmp(context.file_path, "stub-sigil") != 0) {
+    } else if (context.mission_type == ENVOY_MISSION_PLEDGE && strcmp(context.file_path, "stub-sigil") != 0) {
         result = envoy_worker_run_pledge(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
     } else if (context.mission_type == ENVOY_MISSION_PRODUCTS) {
         result = envoy_worker_run_products(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);

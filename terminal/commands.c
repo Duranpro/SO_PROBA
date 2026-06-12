@@ -33,10 +33,7 @@ static void commands_print_trade_authorization_error(const char *realm_name) {
         return;
     }
 
-    if (asprintf(&line,
-                 "The gates of commerce with %s remain closed; no alliance binds you.",
-                 realm_name) >= 0 &&
-        line != NULL) {
+    if (asprintf(&line, "The gates of commerce with %s remain closed; no alliance binds you.", realm_name) >= 0 && line != NULL) {
         utils_println(line);
         free(line);
     }
@@ -105,8 +102,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             commands_print_incomplete("PLEDGE RESPOND is incomplete. Use PLEDGE RESPOND <REALM> ACCEPT or PLEDGE RESPOND <REALM> REJECT.");
             return true;
         }
-        if (count == 4 &&
-            (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
+        if (count == 4 && (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
             bool accepted = utils_equals_ignore_case(tokens[3], "ACCEPT");
             char target_endpoint[128];
             char peer_stable_endpoint[128];
@@ -114,13 +110,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             memset(target_endpoint, 0, sizeof(target_endpoint));
             memset(peer_stable_endpoint, 0, sizeof(peer_stable_endpoint));
 
-            if (!network_prepare_pledge_response_mission(&context->network,
-                                                         tokens[2],
-                                                         accepted,
-                                                         target_endpoint,
-                                                         sizeof(target_endpoint),
-                                                         peer_stable_endpoint,
-                                                         sizeof(peer_stable_endpoint))) {
+            if (!network_prepare_pledge_response_mission(&context->network, tokens[2], accepted, target_endpoint, sizeof(target_endpoint), peer_stable_endpoint, sizeof(peer_stable_endpoint))) {
                 char *line = NULL;
                 if (asprintf(&line, "No pending pledge from %s.", tokens[2]) >= 0 && line != NULL) {
                     utils_println(line);
@@ -129,11 +119,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
                 return true;
             }
 
-            if (!envoy_spawn_pledge_response(context,
-                                             tokens[2],
-                                             accepted,
-                                             target_endpoint,
-                                             peer_stable_endpoint)) {
+            if (!envoy_spawn_pledge_response(context, tokens[2], accepted, target_endpoint, peer_stable_endpoint)) {
                 network_revert_pledge_response_mission(&context->network, tokens[2]);
                 utils_println("All envoys are occupied. Your command must wait.");
                 return true;
