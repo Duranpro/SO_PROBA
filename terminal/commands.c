@@ -33,7 +33,10 @@ static void commands_print_trade_authorization_error(const char *realm_name) {
         return;
     }
 
-    if (asprintf(&line, "ERROR: You must have an alliance with %s to trade.", realm_name) >= 0 && line != NULL) {
+    if (asprintf(&line,
+                 "The gates of commerce with %s remain closed; no alliance binds you.",
+                 realm_name) >= 0 &&
+        line != NULL) {
         utils_println(line);
         free(line);
     }
@@ -69,15 +72,8 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
                 return true;
             }
             if (!envoy_spawn_mission(context, ENVOY_MISSION_PRODUCTS, tokens[2], NULL)) {
-                utils_println("Could not launch the Envoy mission.");
+                utils_println("All envoys are occupied. Your command must wait.");
                 return true;
-            }
-            {
-                char *line = NULL;
-                if (asprintf(&line, "Products request sent to %s using Envoy.", tokens[2]) >= 0 && line != NULL) {
-                    utils_println(line);
-                    free(line);
-                }
             }
             return true;
         }
@@ -125,7 +121,11 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
                                                          sizeof(target_endpoint),
                                                          peer_stable_endpoint,
                                                          sizeof(peer_stable_endpoint))) {
-                utils_println("There is no pending pledge from that realm.");
+                char *line = NULL;
+                if (asprintf(&line, "No pending pledge from %s.", tokens[2]) >= 0 && line != NULL) {
+                    utils_println(line);
+                    free(line);
+                }
                 return true;
             }
 
@@ -135,10 +135,9 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
                                              target_endpoint,
                                              peer_stable_endpoint)) {
                 network_revert_pledge_response_mission(&context->network, tokens[2]);
-                utils_println("No free Envoy available.");
+                utils_println("All envoys are occupied. Your command must wait.");
                 return true;
             }
-            utils_println("Pledge response delegated to Envoy.");
             return true;
         }
         utils_println("Unknown command");
@@ -146,13 +145,13 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
     }
 
     if (count == 2) {
-        commands_print_incomplete("PLEDGE is missing the sigil file. Use PLEDGE <REALM> <sigil.jpg>.");
+        utils_println("No such realm exists. The pledge is hereby withdrawn.");
         return true;
     }
 
     if (count == 3) {
         if (!commands_realm_exists(&context->config, tokens[1])) {
-            utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
+            utils_println("No such realm exists. The pledge is hereby withdrawn.");
             return true;
         }
         if (!network_can_launch_pledge(&context->network, tokens[1])) {
@@ -165,7 +164,15 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
         }
         if (!envoy_spawn_mission(context, ENVOY_MISSION_PLEDGE, tokens[1], tokens[2])) {
             network_revert_pledge_pending(&context->network, tokens[1]);
-            utils_println("Could not launch the Envoy mission.");
+            utils_println("All envoys are occupied. Your command must wait.");
+            return true;
+        }
+        {
+            char *line = NULL;
+            if (asprintf(&line, "Pledge sent to %s.", tokens[1]) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
         }
         return true;
     }

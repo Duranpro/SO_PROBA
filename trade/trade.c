@@ -258,19 +258,6 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
     return true;
 }
 
-static void trade_help(const char *command) {
-    char *line = NULL;
-    int written = 0;
-
-    written = asprintf(&line,
-                       "Incomplete %s command. Use: add <product> <amount>, remove <product> <amount>, send or cancel.",
-                       command);
-    if (written >= 0 && line != NULL) {
-        utils_println(line);
-        free(line);
-    }
-}
-
 static void trade_process_sigchld(struct MaesterContext *context) {
     if (context != NULL && g_sigchld_pending != 0) {
         g_sigchld_pending = 0;
@@ -297,7 +284,10 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
 
     {
         char *message = NULL;
-        int written = asprintf(&message, "Entering trade mode with %s.\n", session.target_realm);
+        int written = asprintf(&message,
+                               "Trade with %s begins.\n"
+                               "A direct path is open; your houses are allied, and no intermediaries stand in between.\n",
+                               session.target_realm);
         if (written >= 0 && message != NULL) {
             utils_print(message);
             free(message);
@@ -323,7 +313,7 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
             free(line2);
         }
     } else {
-        utils_println("No products available. Use LIST PRODUCTS first.");
+        utils_println("No products available. Use LIST PRODUCTS\nfirst.");
     }
 
     while (keep_running) {
@@ -370,7 +360,7 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
             if (count != 1) {
                 utils_println("Unknown command");
             } else if (session.count == 0) {
-                utils_println("Trade is empty. Add at least one product before sending.");
+                utils_println("Trade list is empty.");
             } else {
                 char *file_path = NULL;
                 char *file_name = NULL;
@@ -383,12 +373,14 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
                     free(file_name);
                 } else {
                     if (!envoy_spawn_mission(session.context, ENVOY_MISSION_TRADE, session.target_realm, file_path)) {
-                        utils_println("Trade list saved locally, but no Envoy is available right now.");
+                        utils_println("All envoys are occupied. Your command must wait.");
                         free(file_path);
                         free(file_name);
                     } else {
                         char *message = NULL;
-                        int written = asprintf(&message, "Trade list sent to %s.", session.target_realm);
+                        int written = asprintf(&message,
+                                               "Trade list has been dispatched to %s.",
+                                               session.target_realm);
                         free(file_path);
                         free(file_name);
                         if (written >= 0 && message != NULL) {
@@ -413,18 +405,18 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
             bool parsed_ok = trade_parse_item_command(rest, &product_name, &amount);
 
             if (!parsed_ok) {
-                trade_help(tokens[0]);
+                utils_println("Invalid amount.");
             } else if (utils_equals_ignore_case(tokens[0], "add")) {
                 if (trade_add_item(&session, product_name, amount)) {
                     utils_println("Product added to trade list.");
                 } else {
-                    utils_println("That product is not available from the remote catalog.");
+                    utils_println("Product not available.");
                 }
             } else {
                 if (trade_remove_item(&session, product_name, amount)) {
                     utils_println("Product removed from trade list.");
                 } else {
-                    utils_println("That product is not currently in the trade list.");
+                    utils_println("Product not available.");
                 }
             }
         } else {

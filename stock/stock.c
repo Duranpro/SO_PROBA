@@ -429,6 +429,7 @@ void stock_print_local(const Stock *stock) {
 
     utils_println("--- Trade Ledger ---");
     utils_println("Item | Value (Gold) | Weight (Stone)");
+    utils_println("--------------------------------------------------------");
     for (i = 0; i < snapshot_count; ++i) {
         char *line = NULL;
         int written = asprintf(&line, "%s | %d | %.1f\n",
@@ -440,6 +441,7 @@ void stock_print_local(const Stock *stock) {
             free(line);
         }
     }
+    utils_println("--------------------------------------------------------");
 
     {
         char *summary = NULL;

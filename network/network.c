@@ -7,6 +7,8 @@ typedef struct {
     int port;
 } ParsedEndpoint;
 
+static const char *network_frame_type_text(uint8_t type);
+
 static void network_log_line(const char *text) {
     char *message = NULL;
 
@@ -17,6 +19,12 @@ static void network_log_line(const char *text) {
     if (asprintf(&message, ">>> %s\n", text) >= 0 && message != NULL) {
         utils_print(message);
         free(message);
+    }
+}
+
+static void network_println(const char *text) {
+    if (text != NULL) {
+        utils_println(text);
     }
 }
 
@@ -78,16 +86,15 @@ static bool network_route_has_address(const RouteInfo *route) {
 static const char *network_status_text(AllianceStatus status) {
     switch (status) {
         case ALLIANCE_PENDING_OUT:
-            return "PENDING";
         case ALLIANCE_PENDING_IN:
-            return "AWAITING_RESPONSE";
+            return "PENDING";
         case ALLIANCE_ALLIED:
-            return "ALLIED";
-        case ALLIANCE_INACTIVE:
-            return "INACTIVE";
+            return "ACCEPTED";
         case ALLIANCE_REJECTED:
             return "REJECTED";
         case ALLIANCE_FAILED:
+            return "FAILED";
+        case ALLIANCE_INACTIVE:
             return "FAILED";
         case ALLIANCE_NONE:
         default:
@@ -518,18 +525,16 @@ static bool network_send_frame_to_realm(NetworkContext *network, const char *rea
     bool ok = false;
 
     if (!network_resolve_next_endpoint(network, realm_name, &endpoint)) {
-        if (asprintf(&line, "No route available to %s.", realm_name) >= 0 && line != NULL) {
-            network_log_line(line);
-            free(line);
-        }
+        (void) line;
+        network_println("Route not found.");
         return false;
     }
 
     frame_serialize(frame, buffer);
     ok = network_send_serialized_to_endpoint(endpoint, buffer);
-    if (!ok && asprintf(&line, "Could not reach %s using endpoint %s.", realm_name, endpoint) >= 0 && line != NULL) {
-        network_log_line(line);
-        free(line);
+    if (!ok) {
+        (void) realm_name;
+        network_println("Connection failed.");
     }
 
     free(endpoint);
@@ -1059,6 +1064,9 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
                 payload = "OK";
                 network_log_line("Order processed successfully. Stock updated.");
             } else {
+                if (reason != NULL && strcmp(reason, "OUT_OF_STOCK") == 0) {
+                    network_println("The vaults stand empty; the order cannot be fulfilled");
+                }
                 payload = reason != NULL ? reason : "REJECT";
             }
 
@@ -1261,9 +1269,10 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     if (!stale) {
         char *line = NULL;
-        if (asprintf(&line, "Alliance with %s %s.", realm_name,
-                     accepted ? "forged successfully" : "was rejected") >= 0 && line != NULL) {
-            network_log_line(line);
+        if (asprintf(&line, "Alliance with %s %s.",
+                     realm_name,
+                     accepted ? "established" : "rejected") >= 0 && line != NULL) {
+            utils_println(line);
             free(line);
         }
     }
@@ -1313,7 +1322,13 @@ static void network_handle_products_request(NetworkContext *network, const Netwo
         sent = network_send_file_data_to_endpoint(network, frame->origin, FRAME_TYPE_PRODUCTS_DATA,
                                                   origin_realm, file_path);
         if (sent) {
-            network_log_line("Sending product list.");
+            char *line = NULL;
+            if (asprintf(&line, ">>>LIST PRODUCTS request from %s.", origin_realm) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
+            utils_println("Unveiling the vault of goods...");
+            utils_println("The list has been sealed and sent forth");
         }
     }
 
@@ -1695,16 +1710,16 @@ static void network_handle_trade_response(NetworkContext *network, const Network
             applied = network_apply_successful_order_to_local_stock(network, realm_name, order_file_path);
         }
 
-        if (asprintf(&line, "Order accepted by %s.", realm_name) >= 0 && line != NULL) {
+        if (asprintf(&line, "Order accepted by %s. Stock updated.", realm_name) >= 0 && line != NULL) {
             network_log_line(line);
             free(line);
         }
         if (!applied) {
-            network_log_line("Warning: order was accepted but local stock could not be updated.");
+            network_log_line("Order accepted.");
         }
     } else if (strncmp(data, "REJECT&", 7) == 0) {
         char *line = NULL;
-        if (asprintf(&line, "Order rejected by %s (%s).", realm_name, data + 7) >= 0 && line != NULL) {
+        if (asprintf(&line, "Order rejected by %s.", realm_name) >= 0 && line != NULL) {
             network_log_line(line);
             free(line);
         }
@@ -1823,18 +1838,8 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
     }
     pthread_mutex_unlock(&network->lock);
 
-    if (utils_equals_ignore_case(status, "CHECK_OK")) {
-        char *line = NULL;
-        if (asprintf(&line, "Transfer verified by %s.", realm_name) >= 0 && line != NULL) {
-            network_log_line(line);
-            free(line);
-        }
-    } else {
-        char *line = NULL;
-        if (asprintf(&line, "Transfer rejected by %s (MD5 mismatch).", realm_name) >= 0 && line != NULL) {
-            network_log_line(line);
-            free(line);
-        }
+    if (!utils_equals_ignore_case(status, "CHECK_OK")) {
+        network_println("Invalid checksum.");
     }
 
     free(copy);
@@ -1843,7 +1848,6 @@ static void network_handle_md5_ack(NetworkContext *network, const NetworkFrame *
 static void network_handle_nack(NetworkContext *network, const NetworkFrame *frame) {
     char *data = frame_data_to_text(frame);
     AllianceEntry *entry = NULL;
-    char *line = NULL;
 
     if (data == NULL) {
         return;
@@ -1865,12 +1869,9 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
         }
         pthread_mutex_unlock(&network->lock);
 
-        if (asprintf(&line, "NACK received from %s.", data) >= 0 && line != NULL) {
-            network_log_line(line);
-            free(line);
-        }
+        network_println("Frame discarded.");
     } else {
-        network_log_line("NACK received.");
+        network_println("Frame discarded.");
     }
 
     (void) frame;
@@ -1879,39 +1880,30 @@ static void network_handle_nack(NetworkContext *network, const NetworkFrame *fra
 
 static void network_handle_unknown_realm(const NetworkFrame *frame) {
     char *data = frame_data_to_text(frame);
-    char *line = NULL;
 
     if (data == NULL) {
         return;
     }
 
-    if (asprintf(&line, "Routing error: %s", data) >= 0 && line != NULL) {
-        network_log_line(line);
-        free(line);
-    }
+    network_println("Route not found.");
 
     free(data);
 }
 
 static void network_handle_auth_error(const NetworkFrame *frame) {
     char *data = frame_data_to_text(frame);
-    char *line = NULL;
 
     if (data == NULL) {
         return;
     }
 
-    if (asprintf(&line, "Authorization error: %s", data) >= 0 && line != NULL) {
-        network_log_line(line);
-        free(line);
-    }
+    network_println("Connection failed.");
 
     free(data);
 }
 
 static void network_handle_disconnect(NetworkContext *network, const NetworkFrame *frame) {
     char *realm_name = network_find_realm_by_endpoint(network, frame->origin);
-    char *line = NULL;
 
     if (realm_name == NULL) {
         return;
@@ -1925,11 +1917,6 @@ static void network_handle_disconnect(NetworkContext *network, const NetworkFram
         }
     }
     pthread_mutex_unlock(&network->lock);
-
-    if (asprintf(&line, "%s is now inactive.", realm_name) >= 0 && line != NULL) {
-        network_log_line(line);
-        free(line);
-    }
 
     free(realm_name);
 }
@@ -1988,13 +1975,29 @@ static void network_process_local_frame(NetworkContext *network, const NetworkFr
 
 static void network_forward_or_discard(NetworkContext *network, const NetworkFrame *frame) {
     char *origin_realm = NULL;
+    char *next_endpoint = NULL;
+    char *origin_name = NULL;
     char *line = NULL;
 
-    if (network_send_frame_to_realm(network, frame->destination, frame)) {
-        if (asprintf(&line, "Received hop for %s. Forwarding...", frame->destination) >= 0 && line != NULL) {
-            network_log_line(line);
+    if (network_resolve_next_endpoint(network, frame->destination, &next_endpoint) &&
+        network_send_frame_to_endpoint(next_endpoint, frame)) {
+        origin_name = network_derive_origin_realm(network, frame);
+        if (asprintf(&line,
+                     ">>> Received hop: %s -> %s (%s)",
+                     origin_name != NULL ? origin_name : frame->origin,
+                     frame->destination,
+                     network_frame_type_text(frame->type)) >= 0 &&
+            line != NULL) {
+            utils_println(line);
             free(line);
         }
+        if (asprintf(&line, "Found route: %s -> %s", frame->destination, next_endpoint) >= 0 && line != NULL) {
+            utils_println(line);
+            free(line);
+        }
+        utils_println("Forwarding...");
+        free(next_endpoint);
+        free(origin_name);
         return;
     }
 
@@ -2003,6 +2006,8 @@ static void network_forward_or_discard(NetworkContext *network, const NetworkFra
         network_send_unknown_realm(network, origin_realm, frame->destination);
     }
     free(origin_realm);
+    free(next_endpoint);
+    free(origin_name);
 }
 
 static void network_handle_client(NetworkContext *network, citadel_socket_t client_fd) {
@@ -2309,7 +2314,7 @@ bool network_send_pledge(NetworkContext *network, const char *realm_name, const 
         {
             char *line = NULL;
             if (asprintf(&line, "Pledge sent to %s.", realm_name) >= 0 && line != NULL) {
-                network_log_line(line);
+                utils_println(line);
                 free(line);
             }
         }
@@ -2391,7 +2396,7 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
             char *line = NULL;
             if (asprintf(&line, "Alliance with %s %s.", realm_name,
                          accepted ? "established" : "rejected") >= 0 && line != NULL) {
-                network_log_line(line);
+                utils_println(line);
                 free(line);
             }
         }
@@ -2438,9 +2443,7 @@ bool network_request_remote_products(NetworkContext *network, const char *realm_
     }
 
     sent = network_send_frame_to_realm(network, realm_name, &frame);
-    if (sent) {
-        network_log_line("Remote product request sent.");
-    } else {
+    if (!sent) {
         pthread_mutex_lock(&network->lock);
         entry = network_find_entry_locked(network, realm_name);
         if (entry != NULL) {
@@ -2841,6 +2844,7 @@ void network_apply_envoy_products_result(NetworkContext *network, const char *re
 
 void network_print_pledge_status(NetworkContext *network) {
     size_t i = 0;
+    bool any = false;
 
     if (network == NULL) {
         return;
@@ -2849,11 +2853,56 @@ void network_print_pledge_status(NetworkContext *network) {
     pthread_mutex_lock(&network->lock);
     for (i = 0; i < network->alliance_count; ++i) {
         char *line = NULL;
-        if (asprintf(&line, "- %s: %s\n", network->alliances[i].realm_name,
-                     network_status_text(network->alliances[i].status)) >= 0 && line != NULL) {
+        const char *status_text = network_status_text(network->alliances[i].status);
+
+        if (strcmp(status_text, "NONE") == 0) {
+            continue;
+        }
+
+        any = true;
+        if (asprintf(&line, "- %s: %s\n", network->alliances[i].realm_name, status_text) >= 0 && line != NULL) {
             utils_print(line);
             free(line);
         }
     }
     pthread_mutex_unlock(&network->lock);
+
+    if (!any) {
+        utils_println("You have no pledges awaiting or accepted");
+    }
+}
+
+static const char *network_frame_type_text(uint8_t type) {
+    switch (type) {
+        case FRAME_TYPE_PLEDGE:
+            return "PLEDGE";
+        case FRAME_TYPE_SIGIL_DATA:
+            return "SIGIL_DATA";
+        case FRAME_TYPE_PLEDGE_RESPONSE:
+            return "PLEDGE_RESPONSE";
+        case FRAME_TYPE_PRODUCTS_REQUEST:
+            return "PRODUCTS";
+        case FRAME_TYPE_PRODUCTS_RESPONSE:
+            return "PRODUCTS_RESPONSE";
+        case FRAME_TYPE_PRODUCTS_DATA:
+            return "PRODUCTS_DATA";
+        case FRAME_TYPE_TRADE_HEADER:
+        case FRAME_TYPE_TRADE_DATA:
+        case FRAME_TYPE_TRADE_RESPONSE:
+            return "TRADE";
+        case FRAME_TYPE_UNKNOWN_REALM:
+            return "UNKNOWN_REALM";
+        case FRAME_TYPE_AUTH_ERROR:
+            return "AUTH_ERROR";
+        case FRAME_TYPE_ACK:
+            return "ACK";
+        case FRAME_TYPE_MD5_ACK:
+            return "MD5_ACK";
+        case FRAME_TYPE_NACK:
+            return "NACK";
+        case FRAME_TYPE_DISCONNECT:
+            return "DISCONNECT";
+        default:
+            return "UNKNOWN";
+    }
 }

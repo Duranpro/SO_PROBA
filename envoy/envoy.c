@@ -40,20 +40,6 @@ static const char *envoy_mission_text(EnvoyMissionType mission_type) {
     }
 }
 
-static const char *envoy_result_text(EnvoyResultStatus result_status) {
-    switch (result_status) {
-        case ENVOY_RESULT_OK:
-            return "OK";
-        case ENVOY_RESULT_REJECTED:
-            return "REJECTED";
-        case ENVOY_RESULT_TIMEOUT:
-            return "TIMEOUT";
-        case ENVOY_RESULT_FAILED:
-        default:
-            return "FAILED";
-    }
-}
-
 static const char *envoy_mission_exec_text(EnvoyMissionType mission_type) {
     switch (mission_type) {
         case ENVOY_MISSION_PLEDGE:
@@ -234,7 +220,6 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context,
 
     if (slot == NULL) {
         pthread_mutex_unlock(&context->envoys.mutex);
-        utils_println("No free Envoy available.");
         return false;
     }
 
@@ -320,14 +305,6 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context,
         return false;
     }
 
-    {
-        char *line = NULL;
-        if (asprintf(&line, "Envoy %d launched with pid %ld", slot->id, (long) pid) >= 0 && line != NULL) {
-            utils_println(line);
-            free(line);
-        }
-    }
-
     pthread_mutex_unlock(&context->envoys.mutex);
     return true;
 }
@@ -377,7 +354,6 @@ bool envoy_spawn_mission(struct MaesterContext *context,
 
     if (slot == NULL) {
         pthread_mutex_unlock(&context->envoys.mutex);
-        utils_println("No free Envoy available.");
         return false;
     }
 
@@ -457,14 +433,6 @@ bool envoy_spawn_mission(struct MaesterContext *context,
         envoy_slot_reset(slot);
         pthread_mutex_unlock(&context->envoys.mutex);
         return false;
-    }
-
-    {
-        char *line = NULL;
-        if (asprintf(&line, "Envoy %d launched with pid %ld", slot->id, (long) pid) >= 0 && line != NULL) {
-            utils_println(line);
-            free(line);
-        }
     }
 
     pthread_mutex_unlock(&context->envoys.mutex);
@@ -560,18 +528,17 @@ void envoy_print_status(EnvoyManager *manager) {
         char *line = NULL;
 
         if (slot->status == ENVOY_SLOT_FREE) {
-            if (asprintf(&line, "Envoy %d: FREE", slot->id) >= 0 && line != NULL) {
+            if (asprintf(&line, "- Envoy %d: FREE", slot->id) >= 0 && line != NULL) {
                 utils_println(line);
                 free(line);
             }
             continue;
         }
 
-        if (asprintf(&line, "Envoy %d: ON_MISSION (%s to %s) pid=%ld",
+        if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)",
                      slot->id,
                      envoy_mission_text(slot->mission_type),
-                     slot->target_realm != NULL ? slot->target_realm : "?",
-                     (long) slot->pid) >= 0 && line != NULL) {
+                     slot->target_realm != NULL ? slot->target_realm : "?") >= 0 && line != NULL) {
             utils_println(line);
             free(line);
         }
@@ -589,7 +556,6 @@ void envoy_reap_finished(struct MaesterContext *context) {
 
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         EnvoySlot *slot = NULL;
-        int envoy_id = 0;
         int read_fd = -1;
         EnvoyMissionType mission_type = ENVOY_MISSION_NONE;
         bool response_accepted = false;
@@ -601,7 +567,6 @@ void envoy_reap_finished(struct MaesterContext *context) {
         pthread_mutex_lock(&context->envoys.mutex);
         slot = envoy_find_slot_by_pid_locked(&context->envoys, pid);
         if (slot != NULL) {
-            envoy_id = slot->id;
             read_fd = slot->read_fd;
             mission_type = slot->mission_type;
             response_accepted = slot->response_accepted;
@@ -636,7 +601,7 @@ void envoy_reap_finished(struct MaesterContext *context) {
                     }
                 } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_REJECTED) {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Alliance with %s was rejected.",
+                    if (asprintf(&line, ">>> Alliance with %s was refused!",
                                  header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "")) >= 0 &&
                         line != NULL) {
                         utils_println(line);
@@ -669,22 +634,17 @@ void envoy_reap_finished(struct MaesterContext *context) {
                                                            payload != NULL ? payload : "");
                 if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Alliance with %s %s.",
+                    if (asprintf(&line,
+                                 "Alliance with %s %s.",
                                  result_realm,
-                                 response_accepted ? "accepted" : "rejected") >= 0 && line != NULL) {
-                        utils_println(line);
-                        free(line);
-                    }
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_TIMEOUT) {
-                    char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge response to %s failed (TIMEOUT).", result_realm) >= 0 &&
+                                 response_accepted ? "established" : "rejected") >= 0 &&
                         line != NULL) {
                         utils_println(line);
                         free(line);
                     }
                 } else {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge response to %s failed.", result_realm) >= 0 && line != NULL) {
+                    if (asprintf(&line, "Alliance with %s failed.", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
@@ -694,27 +654,9 @@ void envoy_reap_finished(struct MaesterContext *context) {
 
                 if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
                     network_apply_envoy_products_result(&context->network, result_realm, payload != NULL ? payload : "");
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_TIMEOUT) {
-                    char *line = NULL;
-                    if (asprintf(&line, ">>> Could not retrieve products from %s (TIMEOUT).", result_realm) >= 0 &&
-                        line != NULL) {
-                        utils_println(line);
-                        free(line);
-                    }
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_REJECTED) {
-                    char *line = NULL;
-                    if (asprintf(&line, ">>> Products request to %s was rejected.", result_realm) >= 0 &&
-                        line != NULL) {
-                        utils_println(line);
-                        free(line);
-                    }
                 } else {
-                    char *line = NULL;
-                    if (asprintf(&line, ">>> Could not retrieve products from %s.", result_realm) >= 0 &&
-                        line != NULL) {
-                        utils_println(line);
-                        free(line);
-                    }
+                    (void) result_realm;
+                    utils_println("Connection failed.");
                 }
             } else if (header.mission_type == ENVOY_MISSION_TRADE) {
                 const char *result_realm = header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "");
@@ -727,13 +669,14 @@ void envoy_reap_finished(struct MaesterContext *context) {
                                                          (EnvoyResultStatus) header.result_status,
                                                          payload != NULL ? payload : "")) {
                         char *line = NULL;
-                        if (asprintf(&line, ">>> Order accepted by %s.", result_realm) >= 0 && line != NULL) {
+                        if (asprintf(&line, ">>> Order accepted by %s. Stock updated.", result_realm) >= 0 &&
+                            line != NULL) {
                             utils_println(line);
                             free(line);
                         }
                     } else {
                         char *line = NULL;
-                        if (asprintf(&line, ">>> Order accepted by %s, but local stock could not be updated.",
+                        if (asprintf(&line, ">>> Order accepted by %s.",
                                      result_realm) >= 0 && line != NULL) {
                             utils_println(line);
                             free(line);
@@ -741,13 +684,7 @@ void envoy_reap_finished(struct MaesterContext *context) {
                     }
                 } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_REJECTED) {
                     char *line = NULL;
-                    if (payload != NULL && payload[0] != '\0') {
-                        if (asprintf(&line, ">>> Order rejected by %s (%s).", result_realm, payload) >= 0 &&
-                            line != NULL) {
-                            utils_println(line);
-                            free(line);
-                        }
-                    } else if (asprintf(&line, ">>> Order rejected by %s.", result_realm) >= 0 && line != NULL) {
+                    if (asprintf(&line, ">>> Order rejected by %s.", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
@@ -764,20 +701,6 @@ void envoy_reap_finished(struct MaesterContext *context) {
                         utils_println(line);
                         free(line);
                     }
-                }
-            } else {
-                char *line = NULL;
-                if (asprintf(&line, "Envoy %d finished mission %s to %s: %s",
-                             envoy_id,
-                             envoy_mission_text((EnvoyMissionType) header.mission_type),
-                             header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : ""),
-                             envoy_result_text((EnvoyResultStatus) header.result_status)) >= 0 &&
-                    line != NULL) {
-                    utils_println(line);
-                    free(line);
-                }
-                if (payload != NULL) {
-                    utils_println(payload);
                 }
             }
         } else {
@@ -802,18 +725,11 @@ void envoy_reap_finished(struct MaesterContext *context) {
                                                            "");
                 {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge response to %s failed.", realm != NULL ? realm : "") >= 0 &&
+                    if (asprintf(&line, "Alliance with %s failed.", realm != NULL ? realm : "") >= 0 &&
                         line != NULL) {
                         utils_println(line);
                         free(line);
                     }
-                }
-            } else {
-                char *line = NULL;
-                if (asprintf(&line, "Envoy %d finished but no valid result was received.", envoy_id) >= 0 &&
-                    line != NULL) {
-                    utils_println(line);
-                    free(line);
                 }
             }
         }
