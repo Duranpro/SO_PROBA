@@ -13,18 +13,18 @@
 
 typedef struct {
     int pipe_fd;
-    int envoy_id;
-    EnvoyMissionType mission_type;
+    int id_envoy;
+    EnvoyMissionType tipus_missio;
     char *config_path;
     char *stock_path;
-    char *realm;
-    char *file_path;
+    char *regne;
+    char *ruta_fitxer;
     char *direct_endpoint;
     char *response_action;
-    char *target_endpoint;
-    char *peer_stable_endpoint;
+    char *endpoint_desti;
+    char *endpoint_estable_peer;
     CitadelConfig config;
-    bool config_loaded;
+    bool config_carregada;
 } EnvoyWorkerContext;
 
 static void envoy_worker_context_init(EnvoyWorkerContext *context) {
@@ -34,10 +34,10 @@ static void envoy_worker_context_init(EnvoyWorkerContext *context) {
 
     memset(context, 0, sizeof(*context));
     context->pipe_fd = -1;
-    context->envoy_id = 0;
-    context->mission_type = ENVOY_MISSION_NONE;
+    context->id_envoy = 0;
+    context->tipus_missio = ENVOY_MISSION_NONE;
     config_init(&context->config);
-    context->config_loaded = false;
+    context->config_carregada = false;
 }
 
 static void envoy_worker_context_free(EnvoyWorkerContext *context) {
@@ -45,27 +45,27 @@ static void envoy_worker_context_free(EnvoyWorkerContext *context) {
         return;
     }
 
-    if (context->config_loaded) {
+    if (context->config_carregada) {
         config_free(&context->config);
-        context->config_loaded = false;
+        context->config_carregada = false;
     }
 
     free(context->config_path);
     free(context->stock_path);
-    free(context->realm);
-    free(context->file_path);
+    free(context->regne);
+    free(context->ruta_fitxer);
     free(context->direct_endpoint);
     free(context->response_action);
-    free(context->target_endpoint);
-    free(context->peer_stable_endpoint);
+    free(context->endpoint_desti);
+    free(context->endpoint_estable_peer);
     context->config_path = NULL;
     context->stock_path = NULL;
-    context->realm = NULL;
-    context->file_path = NULL;
+    context->regne = NULL;
+    context->ruta_fitxer = NULL;
     context->direct_endpoint = NULL;
     context->response_action = NULL;
-    context->target_endpoint = NULL;
-    context->peer_stable_endpoint = NULL;
+    context->endpoint_desti = NULL;
+    context->endpoint_estable_peer = NULL;
 }
 
 static EnvoyMissionType envoy_worker_parse_mission(const char *text) {
@@ -184,8 +184,8 @@ static int envoy_worker_create_private_listener(const CitadelConfig *config, cha
     address.sin_family = AF_INET;
     address.sin_port = htons(0);
 
-    if (config->ip != NULL && inet_pton(AF_INET, config->ip, &address.sin_addr) > 0 && bind(listener_fd, (struct sockaddr *) &address, sizeof(address)) == 0) {
-        endpoint_ip = config->ip;
+    if (config->ip_regne != NULL && inet_pton(AF_INET, config->ip_regne, &address.sin_addr) > 0 && bind(listener_fd, (struct sockaddr *) &address, sizeof(address)) == 0) {
+        endpoint_ip = config->ip_regne;
     } else {
         memset(&address, 0, sizeof(address));
         address.sin_family = AF_INET;
@@ -195,8 +195,8 @@ static int envoy_worker_create_private_listener(const CitadelConfig *config, cha
             close(listener_fd);
             return -1;
         }
-        if (config->ip != NULL && *config->ip != '\0') {
-            endpoint_ip = config->ip;
+        if (config->ip_regne != NULL && *config->ip_regne != '\0') {
+            endpoint_ip = config->ip_regne;
         }
     }
 
@@ -274,11 +274,11 @@ static bool envoy_worker_send_frame_to_endpoint(const char *endpoint, const Netw
 }
 
 static bool envoy_worker_route_has_address(const RouteInfo *route) {
-    if (route == NULL || route->ip == NULL || route->port <= 0) {
+    if (route == NULL || route->ip_regne == NULL || route->port_regne <= 0) {
         return false;
     }
 
-    return strcmp(route->ip, "*.*.*.*") != 0;
+    return strcmp(route->ip_regne, "*.*.*.*") != 0;
 }
 
 static bool envoy_worker_resolve_realm_endpoint(const EnvoyWorkerContext *ctx, const char *realm, char *endpoint_out, size_t endpoint_size) {
@@ -302,7 +302,7 @@ static bool envoy_worker_resolve_realm_endpoint(const EnvoyWorkerContext *ctx, c
         return false;
     }
 
-    return envoy_worker_build_endpoint(route->ip, route->port, endpoint_out, endpoint_size);
+    return envoy_worker_build_endpoint(route->ip_regne, route->port_regne, endpoint_out, endpoint_size);
 }
 
 static bool envoy_worker_send_frame_to_realm(const EnvoyWorkerContext *ctx, const char *realm, const NetworkFrame *frame) {
@@ -360,7 +360,7 @@ static bool envoy_worker_accept_frame_timeout(int listener_fd, int timeout_secon
         }
         close(client_fd);
 
-        if (!frame_deserialize(buffer, frame_out) || !frame_validate_checksum(frame_out)) {
+        if (!frame_deserialize(buffer, frame_out) || !frame_validar_checksum(frame_out)) {
             errno = EPROTO;
             return false;
         }
@@ -369,28 +369,28 @@ static bool envoy_worker_accept_frame_timeout(int listener_fd, int timeout_secon
     }
 }
 
-static bool envoy_worker_send_ack(const char *endpoint, const char *origin_endpoint, const char *destination, const char *status) {
+static bool envoy_worker_send_ack(const char *endpoint, const char *endpoint_origen, const char *destination, const char *status) {
     NetworkFrame frame;
 
-    if (endpoint == NULL || origin_endpoint == NULL || destination == NULL || status == NULL) {
+    if (endpoint == NULL || endpoint_origen == NULL || destination == NULL || status == NULL) {
         return false;
     }
 
-    if (!frame_set(&frame, FRAME_TYPE_ACK, origin_endpoint, destination, status, strlen(status))) {
+    if (!frame_set(&frame, FRAME_TYPE_ACK, endpoint_origen, destination, status, strlen(status))) {
         return false;
     }
 
     return envoy_worker_send_frame_to_endpoint(endpoint, &frame);
 }
 
-static bool envoy_worker_send_md5_ack(const char *endpoint, const char *origin_endpoint, const char *destination, const char *status) {
+static bool envoy_worker_send_md5_ack(const char *endpoint, const char *endpoint_origen, const char *destination, const char *status) {
     NetworkFrame frame;
 
-    if (endpoint == NULL || origin_endpoint == NULL || destination == NULL || status == NULL) {
+    if (endpoint == NULL || endpoint_origen == NULL || destination == NULL || status == NULL) {
         return false;
     }
 
-    if (!frame_set(&frame, FRAME_TYPE_MD5_ACK, origin_endpoint, destination, status, strlen(status))) {
+    if (!frame_set(&frame, FRAME_TYPE_MD5_ACK, endpoint_origen, destination, status, strlen(status))) {
         return false;
     }
 
@@ -414,13 +414,13 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
             free(context->stock_path);
             context->stock_path = utils_strdup_safe(argv[++i]);
         } else if (strcmp(argv[i], "--mission") == 0 && i + 1 < argc) {
-            context->mission_type = envoy_worker_parse_mission(argv[++i]);
+            context->tipus_missio = envoy_worker_parse_mission(argv[++i]);
         } else if (strcmp(argv[i], "--realm") == 0 && i + 1 < argc) {
-            free(context->realm);
-            context->realm = utils_strdup_safe(argv[++i]);
+            free(context->regne);
+            context->regne = utils_strdup_safe(argv[++i]);
         } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
-            free(context->file_path);
-            context->file_path = utils_strdup_safe(argv[++i]);
+            free(context->ruta_fitxer);
+            context->ruta_fitxer = utils_strdup_safe(argv[++i]);
         } else if (strcmp(argv[i], "--direct-endpoint") == 0 && i + 1 < argc) {
             char ip[64];
             int port = 0;
@@ -439,47 +439,47 @@ static bool envoy_worker_parse_arguments(EnvoyWorkerContext *context, int argc, 
             int port = 0;
             const char *candidate = argv[++i];
 
-            free(context->target_endpoint);
-            context->target_endpoint = NULL;
+            free(context->endpoint_desti);
+            context->endpoint_desti = NULL;
             if (envoy_worker_parse_endpoint(candidate, ip, sizeof(ip), &port)) {
-                context->target_endpoint = utils_strdup_safe(candidate);
+                context->endpoint_desti = utils_strdup_safe(candidate);
             }
         } else if (strcmp(argv[i], "--peer-stable-endpoint") == 0 && i + 1 < argc) {
             char ip[64];
             int port = 0;
             const char *candidate = argv[++i];
 
-            free(context->peer_stable_endpoint);
-            context->peer_stable_endpoint = NULL;
+            free(context->endpoint_estable_peer);
+            context->endpoint_estable_peer = NULL;
             if (candidate[0] == '\0') {
-                context->peer_stable_endpoint = utils_strdup_safe("");
+                context->endpoint_estable_peer = utils_strdup_safe("");
             } else if (envoy_worker_parse_endpoint(candidate, ip, sizeof(ip), &port)) {
-                context->peer_stable_endpoint = utils_strdup_safe(candidate);
+                context->endpoint_estable_peer = utils_strdup_safe(candidate);
             }
         } else if (strcmp(argv[i], "--envoy-id") == 0 && i + 1 < argc) {
-            context->envoy_id = atoi(argv[++i]);
+            context->id_envoy = atoi(argv[++i]);
         }
     }
 
-    if (context->realm == NULL) {
-        context->realm = utils_strdup_safe("");
+    if (context->regne == NULL) {
+        context->regne = utils_strdup_safe("");
     }
-    if (context->file_path == NULL) {
-        context->file_path = utils_strdup_safe("");
-    }
-
-    if (context->peer_stable_endpoint == NULL) {
-        context->peer_stable_endpoint = utils_strdup_safe("");
+    if (context->ruta_fitxer == NULL) {
+        context->ruta_fitxer = utils_strdup_safe("");
     }
 
-    if (!(context->pipe_fd >= 0 && context->envoy_id > 0 && context->mission_type != ENVOY_MISSION_NONE && context->config_path != NULL && context->stock_path != NULL && context->realm != NULL && context->file_path != NULL && context->peer_stable_endpoint != NULL)) {
+    if (context->endpoint_estable_peer == NULL) {
+        context->endpoint_estable_peer = utils_strdup_safe("");
+    }
+
+    if (!(context->pipe_fd >= 0 && context->id_envoy > 0 && context->tipus_missio != ENVOY_MISSION_NONE && context->config_path != NULL && context->stock_path != NULL && context->regne != NULL && context->ruta_fitxer != NULL && context->endpoint_estable_peer != NULL)) {
         return false;
     }
 
-    if (context->mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
+    if (context->tipus_missio == ENVOY_MISSION_PLEDGE_RESPONSE) {
         return context->response_action != NULL &&
-               context->target_endpoint != NULL &&
-               context->target_endpoint[0] != '\0' &&
+               context->endpoint_desti != NULL &&
+               context->endpoint_desti[0] != '\0' &&
                (utils_equals_ignore_case(context->response_action, "ACCEPT") || utils_equals_ignore_case(context->response_action, "REJECT"));
     }
 
@@ -506,7 +506,7 @@ static bool envoy_worker_wait_frame_type(int listener_fd, int expected_type, int
             return false;
         }
 
-        if ((int) frame.type == expected_type) {
+        if ((int) frame.tipus == expected_type) {
             *out = frame;
             return true;
         }
@@ -529,20 +529,20 @@ static bool envoy_worker_payload_starts_with(const char *payload, const char *pr
     return strncmp(payload, prefix, strlen(prefix)) == 0;
 }
 
-static bool envoy_worker_parse_header_triplet(const char *text, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
+static bool envoy_worker_parse_header_triplet(const char *text, char **nom_fitxer_out, size_t *mida_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     char *copy = NULL;
-    char *file_name = NULL;
+    char *nom_fitxer = NULL;
     char *size_text = NULL;
     char *md5 = NULL;
     long size_value = 0;
     char *end = NULL;
 
-    if (text == NULL || file_name_out == NULL || size_out == NULL || md5_out == NULL) {
+    if (text == NULL || nom_fitxer_out == NULL || mida_out == NULL || md5_out == NULL) {
         return false;
     }
 
-    *file_name_out = NULL;
-    *size_out = 0;
+    *nom_fitxer_out = NULL;
+    *mida_out = 0;
     md5_out[0] = '\0';
 
     copy = utils_strdup_safe(text);
@@ -550,10 +550,10 @@ static bool envoy_worker_parse_header_triplet(const char *text, char **file_name
         return false;
     }
 
-    file_name = strtok(copy, "&");
+    nom_fitxer = strtok(copy, "&");
     size_text = strtok(NULL, "&");
     md5 = strtok(NULL, "&");
-    if (file_name == NULL || size_text == NULL || md5 == NULL || *file_name == '\0' || *md5 == '\0') {
+    if (nom_fitxer == NULL || size_text == NULL || md5 == NULL || *nom_fitxer == '\0' || *md5 == '\0') {
         free(copy);
         return false;
     }
@@ -565,29 +565,29 @@ static bool envoy_worker_parse_header_triplet(const char *text, char **file_name
         return false;
     }
 
-    *file_name_out = utils_strdup_safe(file_name);
-    if (*file_name_out == NULL) {
+    *nom_fitxer_out = utils_strdup_safe(nom_fitxer);
+    if (*nom_fitxer_out == NULL) {
         free(copy);
         return false;
     }
 
-    *size_out = (size_t) size_value;
+    *mida_out = (size_t) size_value;
     strncpy(md5_out, md5, CITADEL_MD5_LENGTH);
     md5_out[CITADEL_MD5_LENGTH] = '\0';
     free(copy);
     return true;
 }
 
-static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx, const char *origin_endpoint, const char *destination_realm, const char *file_path, uint8_t frame_type) {
+static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx, const char *endpoint_origen, const char *regne_desti, const char *ruta_fitxer, uint8_t frame_type) {
     int fd = -1;
     unsigned char block[CITADEL_FRAME_DATA_SIZE];
     bool ok = true;
 
-    if (ctx == NULL || origin_endpoint == NULL || destination_realm == NULL || file_path == NULL) {
+    if (ctx == NULL || endpoint_origen == NULL || regne_desti == NULL || ruta_fitxer == NULL) {
         return false;
     }
 
-    fd = open(file_path, O_RDONLY);
+    fd = open(ruta_fitxer, O_RDONLY);
     if (fd < 0) {
         return false;
     }
@@ -607,7 +607,7 @@ static bool envoy_worker_send_file_fragments(const EnvoyWorkerContext *ctx, cons
             break;
         }
 
-        if (!frame_set(&frame, frame_type, origin_endpoint, destination_realm, block, (size_t) bytes) || !envoy_worker_send_frame_to_realm(ctx, destination_realm, &frame)) {
+        if (!frame_set(&frame, frame_type, endpoint_origen, regne_desti, block, (size_t) bytes) || !envoy_worker_send_frame_to_realm(ctx, regne_desti, &frame)) {
             ok = false;
             break;
         }
@@ -650,20 +650,20 @@ static bool envoy_worker_receive_file_payload(int listener_fd, int expected_type
             return false;
         }
 
-        if ((int) frame.type != expected_type) {
+        if ((int) frame.tipus != expected_type) {
             free(buffer);
             errno = EPROTO;
             return false;
         }
 
-        if (total + frame.data_length > expected_size) {
+        if (total + frame.mida_data > expected_size) {
             free(buffer);
             errno = EPROTO;
             return false;
         }
 
-        memcpy(buffer + total, frame.data, frame.data_length);
-        total += frame.data_length;
+        memcpy(buffer + total, frame.data, frame.mida_data);
+        total += frame.mida_data;
     }
 
     buffer[expected_size] = '\0';
@@ -682,8 +682,8 @@ static bool envoy_worker_compute_md5_from_memory(EnvoyWorkerContext *ctx, const 
         return false;
     }
 
-    if (ctx->config.workdir != NULL && ctx->config.workdir[0] != '\0') {
-        base_dir = ctx->config.workdir;
+    if (ctx->config.directori_carpeta != NULL && ctx->config.directori_carpeta[0] != '\0') {
+        base_dir = ctx->config.directori_carpeta;
     } else {
         base_dir = "/tmp";
     }
@@ -713,8 +713,8 @@ static bool envoy_worker_compute_md5_from_memory(EnvoyWorkerContext *ctx, const 
 
 static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     char *order_text = NULL;
-    char *file_name = NULL;
-    size_t file_size = 0;
+    char *nom_fitxer = NULL;
+    size_t mida_fitxer = 0;
     char md5[CITADEL_MD5_LENGTH + 1];
     int listener_fd = -1;
     char private_endpoint[128];
@@ -739,15 +739,15 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
     memset(&md5_ack_frame, 0, sizeof(md5_ack_frame));
     memset(&response_frame, 0, sizeof(response_frame));
 
-    if (ctx->file_path == NULL || ctx->file_path[0] == '\0') {
+    if (ctx->ruta_fitxer == NULL || ctx->ruta_fitxer[0] == '\0') {
         *payload_out = utils_strdup_safe("Could not prepare trade order.");
         return ENVOY_RESULT_FAILED;
     }
 
-    order_text = utils_read_file(ctx->file_path, NULL);
-    if (order_text == NULL || !transfer_get_file_info(ctx->file_path, &file_name, &file_size, md5)) {
+    order_text = utils_read_file(ctx->ruta_fitxer, NULL);
+    if (order_text == NULL || !transfer_obtenir_info_fitxer(ctx->ruta_fitxer, &nom_fitxer, &mida_fitxer, md5)) {
         free(order_text);
-        free(file_name);
+        free(nom_fitxer);
         *payload_out = utils_strdup_safe("Could not prepare trade order.");
         return ENVOY_RESULT_FAILED;
     }
@@ -755,12 +755,12 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
     listener_fd = envoy_worker_create_private_listener(&ctx->config, private_endpoint, sizeof(private_endpoint));
     if (listener_fd < 0) {
         free(order_text);
-        free(file_name);
+        free(nom_fitxer);
         *payload_out = utils_strdup_safe("Could not create private Envoy listener.");
         return ENVOY_RESULT_FAILED;
     }
 
-    if (asprintf(&header_payload, "%s&%s&%zu&%s", ctx->config.realm_name, file_name, file_size, md5) < 0 || header_payload == NULL || !frame_set(&trade_header, FRAME_TYPE_TRADE_HEADER, private_endpoint, ctx->realm, header_payload, strlen(header_payload)) || !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &trade_header)) {
+    if (asprintf(&header_payload, "%s&%s&%zu&%s", ctx->config.nom_regne, nom_fitxer, mida_fitxer, md5) < 0 || header_payload == NULL || !frame_set(&trade_header, FRAME_TYPE_TRADE_HEADER, private_endpoint, ctx->regne, header_payload, strlen(header_payload)) || !envoy_worker_send_frame_to_realm(ctx, ctx->regne, &trade_header)) {
         *payload_out = utils_strdup_safe("Could not send trade header.");
         goto cleanup;
     }
@@ -788,7 +788,7 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm, ctx->file_path, FRAME_TYPE_TRADE_DATA)) {
+    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->regne, ctx->ruta_fitxer, FRAME_TYPE_TRADE_DATA)) {
         *payload_out = utils_strdup_safe("Could not send trade order data.");
         goto cleanup;
     }
@@ -831,7 +831,7 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
         goto cleanup;
     }
 
-    strncpy(remote_endpoint_out, response_frame.origin, remote_endpoint_size - 1);
+    strncpy(remote_endpoint_out, response_frame.origen, remote_endpoint_size - 1);
     remote_endpoint_out[remote_endpoint_size - 1] = '\0';
 
     frame_payload = envoy_worker_frame_data_text(&response_frame);
@@ -861,7 +861,7 @@ cleanup:
     free(frame_payload);
     free(header_payload);
     free(order_text);
-    free(file_name);
+    free(nom_fitxer);
     return result;
 }
 
@@ -873,10 +873,10 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
     NetworkFrame response_frame;
     NetworkFrame ack_frame;
     char *frame_payload = NULL;
-    bool accepted = false;
+    bool acceptat = false;
     EnvoyResultStatus result = ENVOY_RESULT_FAILED;
 
-    if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL || ctx->target_endpoint == NULL || ctx->response_action == NULL) {
+    if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL || ctx->endpoint_desti == NULL || ctx->response_action == NULL) {
         return ENVOY_RESULT_FAILED;
     }
 
@@ -888,13 +888,13 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
     memset(&response_frame, 0, sizeof(response_frame));
     memset(&ack_frame, 0, sizeof(ack_frame));
 
-    accepted = utils_equals_ignore_case(ctx->response_action, "ACCEPT");
-    if (!accepted && !utils_equals_ignore_case(ctx->response_action, "REJECT")) {
+    acceptat = utils_equals_ignore_case(ctx->response_action, "ACCEPT");
+    if (!acceptat && !utils_equals_ignore_case(ctx->response_action, "REJECT")) {
         *payload_out = utils_strdup_safe("Invalid pledge response action.");
         return ENVOY_RESULT_FAILED;
     }
 
-    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port, local_stable_endpoint, sizeof(local_stable_endpoint))) {
+    if (!envoy_worker_build_endpoint(ctx->config.ip_regne, ctx->config.port_regne, local_stable_endpoint, sizeof(local_stable_endpoint))) {
         *payload_out = utils_strdup_safe("Could not build local stable endpoint.");
         return ENVOY_RESULT_FAILED;
     }
@@ -905,7 +905,7 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
         return ENVOY_RESULT_FAILED;
     }
 
-    if ((accepted && asprintf(&response_text, "ACCEPT&%s&%s", ctx->config.realm_name, local_stable_endpoint) < 0) || (!accepted && asprintf(&response_text, "REJECT&%s", ctx->config.realm_name) < 0) || response_text == NULL || !frame_set(&response_frame, FRAME_TYPE_PLEDGE_RESPONSE, private_endpoint, ctx->realm, response_text, strlen(response_text)) || !envoy_worker_send_frame_to_endpoint(ctx->target_endpoint, &response_frame)) {
+    if ((acceptat && asprintf(&response_text, "ACCEPT&%s&%s", ctx->config.nom_regne, local_stable_endpoint) < 0) || (!acceptat && asprintf(&response_text, "REJECT&%s", ctx->config.nom_regne) < 0) || response_text == NULL || !frame_set(&response_frame, FRAME_TYPE_PLEDGE_RESPONSE, private_endpoint, ctx->regne, response_text, strlen(response_text)) || !envoy_worker_send_frame_to_endpoint(ctx->endpoint_desti, &response_frame)) {
         *payload_out = utils_strdup_safe("Could not send pledge response.");
         goto cleanup;
     }
@@ -932,9 +932,9 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
     }
 
     result = ENVOY_RESULT_OK;
-    if (accepted) {
-        if (ctx->peer_stable_endpoint != NULL) {
-            *payload_out = utils_strdup_safe(ctx->peer_stable_endpoint);
+    if (acceptat) {
+        if (ctx->endpoint_estable_peer != NULL) {
+            *payload_out = utils_strdup_safe(ctx->endpoint_estable_peer);
         } else {
             *payload_out = utils_strdup_safe("");
         }
@@ -985,10 +985,10 @@ static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx, char *re
 
 static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     char *sigil_path = NULL;
-    char *file_name = NULL;
+    char *nom_fitxer = NULL;
     char stable_endpoint[128];
     char md5[CITADEL_MD5_LENGTH + 1];
-    size_t file_size = 0;
+    size_t mida_fitxer = 0;
     int listener_fd = -1;
     char private_endpoint[128];
     NetworkFrame pledge_frame;
@@ -1014,10 +1014,10 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     memset(&md5_ack_frame, 0, sizeof(md5_ack_frame));
     memset(&response_frame, 0, sizeof(response_frame));
 
-    sigil_path = transfer_resolve_sigil_path(&ctx->config, ctx->file_path);
-    if (sigil_path == NULL || !transfer_get_file_info(sigil_path, &file_name, &file_size, md5)) {
+    sigil_path = transfer_resolve_sigil_path(&ctx->config, ctx->ruta_fitxer);
+    if (sigil_path == NULL || !transfer_obtenir_info_fitxer(sigil_path, &nom_fitxer, &mida_fitxer, md5)) {
         free(sigil_path);
-        free(file_name);
+        free(nom_fitxer);
         *payload_out = utils_strdup_safe("Could not prepare pledge sigil.");
         return ENVOY_RESULT_FAILED;
     }
@@ -1025,12 +1025,12 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     listener_fd = envoy_worker_create_private_listener(&ctx->config, private_endpoint, sizeof(private_endpoint));
     if (listener_fd < 0) {
         free(sigil_path);
-        free(file_name);
+        free(nom_fitxer);
         *payload_out = utils_strdup_safe("Could not create private Envoy listener.");
         return ENVOY_RESULT_FAILED;
     }
 
-    if (!envoy_worker_build_endpoint(ctx->config.ip, ctx->config.port, stable_endpoint, sizeof(stable_endpoint)) || asprintf(&payload_text, "%s&%s&%zu&%s&%s", ctx->config.realm_name, file_name, file_size, md5, stable_endpoint) < 0 || payload_text == NULL || !frame_set(&pledge_frame, FRAME_TYPE_PLEDGE, private_endpoint, ctx->realm, payload_text, strlen(payload_text)) || !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &pledge_frame)) {
+    if (!envoy_worker_build_endpoint(ctx->config.ip_regne, ctx->config.port_regne, stable_endpoint, sizeof(stable_endpoint)) || asprintf(&payload_text, "%s&%s&%zu&%s&%s", ctx->config.nom_regne, nom_fitxer, mida_fitxer, md5, stable_endpoint) < 0 || payload_text == NULL || !frame_set(&pledge_frame, FRAME_TYPE_PLEDGE, private_endpoint, ctx->regne, payload_text, strlen(payload_text)) || !envoy_worker_send_frame_to_realm(ctx, ctx->regne, &pledge_frame)) {
         *payload_out = utils_strdup_safe("Could not send pledge request.");
         goto cleanup;
     }
@@ -1060,7 +1060,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     free(frame_payload);
     frame_payload = NULL;
 
-    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->realm, sigil_path, FRAME_TYPE_SIGIL_DATA)) {
+    if (!envoy_worker_send_file_fragments(ctx, private_endpoint, ctx->regne, sigil_path, FRAME_TYPE_SIGIL_DATA)) {
         *payload_out = utils_strdup_safe("Could not send pledge sigil data.");
         goto cleanup;
     }
@@ -1109,13 +1109,13 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
         goto cleanup;
     }
 
-    snprintf(ack_final, sizeof(ack_final), "OK&%s", ctx->config.realm_name);
-    (void) envoy_worker_send_ack(response_frame.origin, private_endpoint, "", ack_final);
+    snprintf(ack_final, sizeof(ack_final), "OK&%s", ctx->config.nom_regne);
+    (void) envoy_worker_send_ack(response_frame.origen, private_endpoint, "", ack_final);
 
     if (envoy_worker_payload_starts_with(frame_payload, "ACCEPT&")) {
         char *response_copy = utils_strdup_safe(frame_payload);
         char *decision = NULL;
-        char *realm_name = NULL;
+        char *nom_regne = NULL;
         char *stable = NULL;
 
         if (response_copy == NULL) {
@@ -1124,10 +1124,10 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
         }
 
         decision = strtok(response_copy, "&");
-        realm_name = strtok(NULL, "&");
+        nom_regne = strtok(NULL, "&");
         stable = strtok(NULL, "&");
         (void) decision;
-        (void) realm_name;
+        (void) nom_regne;
 
         if (stable != NULL && stable[0] != '\0') {
             char ip[64];
@@ -1138,7 +1138,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
             }
         }
         if (remote_endpoint_out[0] == '\0') {
-            strncpy(remote_endpoint_out, response_frame.origin, remote_endpoint_size - 1);
+            strncpy(remote_endpoint_out, response_frame.origen, remote_endpoint_size - 1);
             remote_endpoint_out[remote_endpoint_size - 1] = '\0';
         }
 
@@ -1158,7 +1158,7 @@ cleanup:
         close(listener_fd);
     }
     free(sigil_path);
-    free(file_name);
+    free(nom_fitxer);
     return result;
 }
 
@@ -1168,7 +1168,7 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
     NetworkFrame request_frame;
     NetworkFrame response_frame;
     char *response_text = NULL;
-    char *file_name = NULL;
+    char *nom_fitxer = NULL;
     size_t expected_size = 0;
     char expected_md5[CITADEL_MD5_LENGTH + 1];
     char *catalog_text = NULL;
@@ -1196,7 +1196,7 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
         return ENVOY_RESULT_FAILED;
     }
 
-    if (!frame_set(&request_frame, FRAME_TYPE_PRODUCTS_REQUEST, private_endpoint, ctx->realm, ctx->config.realm_name, strlen(ctx->config.realm_name)) || !envoy_worker_send_frame_to_realm(ctx, ctx->realm, &request_frame)) {
+    if (!frame_set(&request_frame, FRAME_TYPE_PRODUCTS_REQUEST, private_endpoint, ctx->regne, ctx->config.nom_regne, strlen(ctx->config.nom_regne)) || !envoy_worker_send_frame_to_realm(ctx, ctx->regne, &request_frame)) {
         *payload_out = utils_strdup_safe("Could not send products request.");
         goto cleanup;
     }
@@ -1216,17 +1216,17 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
         goto cleanup;
     }
 
-    strncpy(remote_endpoint_out, response_frame.origin, remote_endpoint_size - 1);
+    strncpy(remote_endpoint_out, response_frame.origen, remote_endpoint_size - 1);
     remote_endpoint_out[remote_endpoint_size - 1] = '\0';
 
     response_text = envoy_worker_frame_data_text(&response_frame);
-    if (response_text == NULL || !envoy_worker_parse_header_triplet(response_text, &file_name, &expected_size, expected_md5)) {
+    if (response_text == NULL || !envoy_worker_parse_header_triplet(response_text, &nom_fitxer, &expected_size, expected_md5)) {
         *payload_out = utils_strdup_safe("Invalid products response received.");
         goto cleanup;
     }
 
-    snprintf(ack_payload, sizeof(ack_payload), "OK&%s", ctx->config.realm_name);
-    if (!envoy_worker_send_ack(response_frame.origin, private_endpoint, "", ack_payload)) {
+    snprintf(ack_payload, sizeof(ack_payload), "OK&%s", ctx->config.nom_regne);
+    if (!envoy_worker_send_ack(response_frame.origen, private_endpoint, "", ack_payload)) {
         *payload_out = utils_strdup_safe("Could not acknowledge products response.");
         goto cleanup;
     }
@@ -1260,15 +1260,15 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
             md5_status = "CHECK_KO";
         }
 
-        snprintf(md5_payload, sizeof(md5_payload), "%s&%s", md5_status, ctx->config.realm_name);
+        snprintf(md5_payload, sizeof(md5_payload), "%s&%s", md5_status, ctx->config.nom_regne);
     }
-    if (!envoy_worker_send_md5_ack(response_frame.origin, private_endpoint, "", md5_payload)) {
+    if (!envoy_worker_send_md5_ack(response_frame.origen, private_endpoint, "", md5_payload)) {
         *payload_out = utils_strdup_safe("Could not send products MD5 acknowledgement.");
         goto cleanup;
     }
 
     if (strcmp(actual_md5, expected_md5) != 0) {
-        *payload_out = utils_strdup_safe("Products payload failed MD5 verification.");
+        *payload_out = utils_strdup_safe("products payload failed MD5 verification.");
         goto cleanup;
     }
 
@@ -1281,7 +1281,7 @@ cleanup:
         close(listener_fd);
     }
     free(response_text);
-    free(file_name);
+    free(nom_fitxer);
     free(catalog_text);
     return result;
 }
@@ -1289,51 +1289,51 @@ cleanup:
 int envoy_worker_main(int argc, char **argv) {
     EnvoyWorkerContext context;
     EnvoyResultHeader header;
-    char remote_endpoint[128];
+    char endpoint_remot[128];
     char *payload_text = NULL;
     bool write_ok = false;
     EnvoyResultStatus result = ENVOY_RESULT_FAILED;
 
     envoy_worker_context_init(&context);
     memset(&header, 0, sizeof(header));
-    memset(remote_endpoint, 0, sizeof(remote_endpoint));
+    memset(endpoint_remot, 0, sizeof(endpoint_remot));
 
     if (!envoy_worker_parse_arguments(&context, argc, argv)) {
         envoy_worker_context_free(&context);
         return EXIT_FAILURE;
     }
 
-    context.config_loaded = config_load(context.config_path, &context.config);
-    if (!context.config_loaded) {
+    context.config_carregada = config_load(context.config_path, &context.config);
+    if (!context.config_carregada) {
         payload_text = utils_strdup_safe("Envoy worker could not load config.");
-    } else if (context.mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
-        result = envoy_worker_run_pledge_response(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
-    } else if (context.mission_type == ENVOY_MISSION_PLEDGE && strcmp(context.file_path, "stub-sigil") != 0) {
-        result = envoy_worker_run_pledge(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
-    } else if (context.mission_type == ENVOY_MISSION_PRODUCTS) {
-        result = envoy_worker_run_products(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
-    } else if (context.mission_type == ENVOY_MISSION_TRADE) {
-        result = envoy_worker_run_trade(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
+    } else if (context.tipus_missio == ENVOY_MISSION_PLEDGE_RESPONSE) {
+        result = envoy_worker_run_pledge_response(&context, endpoint_remot, sizeof(endpoint_remot), &payload_text);
+    } else if (context.tipus_missio == ENVOY_MISSION_PLEDGE && strcmp(context.ruta_fitxer, "stub-sigil") != 0) {
+        result = envoy_worker_run_pledge(&context, endpoint_remot, sizeof(endpoint_remot), &payload_text);
+    } else if (context.tipus_missio == ENVOY_MISSION_PRODUCTS) {
+        result = envoy_worker_run_products(&context, endpoint_remot, sizeof(endpoint_remot), &payload_text);
+    } else if (context.tipus_missio == ENVOY_MISSION_TRADE) {
+        result = envoy_worker_run_trade(&context, endpoint_remot, sizeof(endpoint_remot), &payload_text);
     } else {
-        result = envoy_worker_run_stub(&context, remote_endpoint, sizeof(remote_endpoint), &payload_text);
+        result = envoy_worker_run_stub(&context, endpoint_remot, sizeof(endpoint_remot), &payload_text);
     }
 
     header.magic = ENVOY_RESULT_MAGIC;
-    header.envoy_id = context.envoy_id;
-    header.mission_type = (int) context.mission_type;
-    header.result_status = (int) result;
-    if (context.realm != NULL) {
-        strncpy(header.realm, context.realm, sizeof(header.realm) - 1);
+    header.id_envoy = context.id_envoy;
+    header.tipus_missio = (int) context.tipus_missio;
+    header.estat_resultat = (int) result;
+    if (context.regne != NULL) {
+        strncpy(header.regne, context.regne, sizeof(header.regne) - 1);
     } else {
-        strncpy(header.realm, "", sizeof(header.realm) - 1);
+        strncpy(header.regne, "", sizeof(header.regne) - 1);
     }
-    header.realm[sizeof(header.realm) - 1] = '\0';
-    strncpy(header.remote_endpoint, remote_endpoint, sizeof(header.remote_endpoint) - 1);
-    header.remote_endpoint[sizeof(header.remote_endpoint) - 1] = '\0';
+    header.regne[sizeof(header.regne) - 1] = '\0';
+    strncpy(header.endpoint_remot, endpoint_remot, sizeof(header.endpoint_remot) - 1);
+    header.endpoint_remot[sizeof(header.endpoint_remot) - 1] = '\0';
     if (payload_text != NULL) {
-        header.payload_size = (uint32_t) strlen(payload_text);
+        header.mida_payload = (uint32_t) strlen(payload_text);
     } else {
-        header.payload_size = (uint32_t) strlen("");
+        header.mida_payload = (uint32_t) strlen("");
     }
 
     if (payload_text != NULL) {

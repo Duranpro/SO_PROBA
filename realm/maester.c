@@ -32,7 +32,7 @@ void maester_context_init(MaesterContext *context) {
     context->config_path = NULL;
     context->stock_path = NULL;
     context->envoys.slots = NULL;
-    context->envoys.count = -1;
+    context->envoys.num_envoys = -1;
 }
 
 void maester_context_destroy(MaesterContext *context) {
@@ -215,7 +215,7 @@ int main(int argc, char **argv) {
     }
 
     maester_launch_paths_free(&paths);
-    if (!envoy_manager_init(&context.envoys, context.config.envoy_count)) {
+    if (!envoy_manager_init(&context.envoys, context.config.num_envoys)) {
         utils_println("Could not initialize the Envoy manager.");
         maester_context_destroy(&context);
         return EXIT_FAILURE;
@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
 
     {
         char *line = NULL;
-        if (asprintf(&line, "Maester of %s initialized. The board is set.\n", context.config.realm_name) >= 0 &&
+        if (asprintf(&line, "Maester of %s initialized. The board is set.\n", context.config.nom_regne) >= 0 &&
             line != NULL) {
             utils_print(line);
             free(line);
@@ -239,7 +239,7 @@ int main(int argc, char **argv) {
     terminal_run(&context, &g_stop_requested);
     if (g_stop_requested == 0) {
         char *line = NULL;
-        if (asprintf(&line, "The Maester of %s signs off. The ravens rest.", context.config.realm_name) >= 0 && line != NULL) {
+        if (asprintf(&line, "The Maester of %s signs off. The ravens rest.", context.config.nom_regne) >= 0 && line != NULL) {
             utils_println(line);
             free(line);
         }

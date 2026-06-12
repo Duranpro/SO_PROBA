@@ -26,20 +26,20 @@
 #define FRAME_TYPE_NACK 0x69
 
 typedef struct {
-    uint8_t type;
-    char origin[CITADEL_FRAME_ORIGIN_SIZE + 1];
+    uint8_t tipus;
+    char origen[CITADEL_FRAME_ORIGIN_SIZE + 1];
     char destination[CITADEL_FRAME_DESTINATION_SIZE + 1];
-    uint16_t data_length;
+    uint16_t mida_data;
     unsigned char data[CITADEL_FRAME_DATA_SIZE];
     uint16_t checksum;
 } NetworkFrame;
 
 void frame_init(NetworkFrame *frame);
-bool frame_set(NetworkFrame *frame, uint8_t type, const char *origin, const char *destination, const void *data, size_t data_length);
+bool frame_set(NetworkFrame *frame, uint8_t tipus, const char *origen, const char *destination, const void *data, size_t mida_data);
 void frame_serialize(const NetworkFrame *frame, unsigned char buffer[CITADEL_FRAME_SIZE]);
 bool frame_deserialize(const unsigned char buffer[CITADEL_FRAME_SIZE], NetworkFrame *frame);
-uint16_t frame_calculate_checksum(const NetworkFrame *frame);
-bool frame_validate_checksum(const NetworkFrame *frame);
+uint16_t frame_calcular_checksum(const NetworkFrame *frame);
+bool frame_validar_checksum(const NetworkFrame *frame);
 char *frame_data_to_text(const NetworkFrame *frame);
 
 #endif

@@ -69,17 +69,17 @@ static void envoy_slot_reset(EnvoySlot *slot) {
         close(slot->read_fd);
     }
 
-    free(slot->target_realm);
-    free(slot->file_path);
+    free(slot->regne_desti);
+    free(slot->ruta_fitxer);
 
     slot->pid = 0;
     slot->read_fd = -1;
-    slot->status = ENVOY_SLOT_FREE;
-    slot->mission_type = ENVOY_MISSION_NONE;
-    slot->response_accepted = false;
-    slot->target_realm = NULL;
-    slot->file_path = NULL;
-    slot->started_at = 0;
+    slot->estat = ENVOY_SLOT_FREE;
+    slot->tipus_missio = ENVOY_MISSION_NONE;
+    slot->resposta_acceptada = false;
+    slot->regne_desti = NULL;
+    slot->ruta_fitxer = NULL;
+    slot->iniciat_a = 0;
 }
 
 static EnvoySlot *envoy_find_slot_by_pid_locked(EnvoyManager *manager, pid_t pid) {
@@ -89,7 +89,7 @@ static EnvoySlot *envoy_find_slot_by_pid_locked(EnvoyManager *manager, pid_t pid
         return NULL;
     }
 
-    for (i = 0; i < manager->count; ++i) {
+    for (i = 0; i < manager->num_envoys; ++i) {
         if (manager->slots[i].pid == pid) {
             return &manager->slots[i];
         }
@@ -107,11 +107,11 @@ bool envoy_result_write(int fd, const EnvoyResultHeader *header, const void *pay
         return false;
     }
 
-    if (header->payload_size > 0) {
+    if (header->mida_payload > 0) {
         if (payload == NULL) {
             return false;
         }
-        if (utils_write_all(fd, payload, header->payload_size) != (ssize_t) header->payload_size) {
+        if (utils_write_all(fd, payload, header->mida_payload) != (ssize_t) header->mida_payload) {
             return false;
         }
     }
@@ -137,65 +137,65 @@ bool envoy_result_read(int fd, EnvoyResultHeader *header, char **payload_out) {
         return false;
     }
 
-    if (header->payload_size == 0) {
+    if (header->mida_payload == 0) {
         return true;
     }
 
-    payload = (char *) malloc((size_t) header->payload_size + 1);
+    payload = (char *) malloc((size_t) header->mida_payload + 1);
     if (payload == NULL) {
         return false;
     }
 
-    if (envoy_read_exact_local(fd, payload, header->payload_size) != (ssize_t) header->payload_size) {
+    if (envoy_read_exact_local(fd, payload, header->mida_payload) != (ssize_t) header->mida_payload) {
         free(payload);
         return false;
     }
 
-    payload[header->payload_size] = '\0';
+    payload[header->mida_payload] = '\0';
     *payload_out = payload;
     return true;
 }
 
-bool envoy_manager_init(EnvoyManager *manager, int count) {
+bool envoy_manager_init(EnvoyManager *manager, int num_items) {
     int i = 0;
 
-    if (manager == NULL || count < 0) {
+    if (manager == NULL || num_items < 0) {
         return false;
     }
 
     manager->slots = NULL;
-    manager->count = -1;
+    manager->num_envoys = -1;
 
     if (pthread_mutex_init(&manager->mutex, NULL) != 0) {
         return false;
     }
 
-    if (count > 0) {
-        manager->slots = (EnvoySlot *) calloc((size_t) count, sizeof(EnvoySlot));
+    if (num_items > 0) {
+        manager->slots = (EnvoySlot *) calloc((size_t) num_items, sizeof(EnvoySlot));
         if (manager->slots == NULL) {
             pthread_mutex_destroy(&manager->mutex);
             return false;
         }
     }
 
-    manager->count = count;
+    manager->num_envoys = num_items;
 
-    for (i = 0; i < count; ++i) {
+    for (i = 0; i < num_items; ++i) {
         manager->slots[i].id = i + 1;
         manager->slots[i].pid = 0;
         manager->slots[i].read_fd = -1;
-        manager->slots[i].status = ENVOY_SLOT_FREE;
-        manager->slots[i].mission_type = ENVOY_MISSION_NONE;
-        manager->slots[i].response_accepted = false;
-        manager->slots[i].target_realm = NULL;
-        manager->slots[i].file_path = NULL;
-        manager->slots[i].started_at = 0;
+        manager->slots[i].estat = ENVOY_SLOT_FREE;
+        manager->slots[i].tipus_missio = ENVOY_MISSION_NONE;
+        manager->slots[i].resposta_acceptada = false;
+        manager->slots[i].regne_desti = NULL;
+        manager->slots[i].ruta_fitxer = NULL;
+        manager->slots[i].iniciat_a = 0;
     }
 
     return true;
 }
 
-bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *realm, bool accepted, const char *target_endpoint, const char *peer_stable_endpoint) {
+bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *regne, bool accepted, const char *endpoint_desti, const char *endpoint_estable_peer) {
     EnvoySlot *slot = NULL;
     int i = 0;
     int pipe_fd[2] = {-1, -1};
@@ -211,19 +211,19 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
         response_text = "REJECT";
     }
 
-    if (peer_stable_endpoint != NULL) {
-        stable_endpoint_arg = peer_stable_endpoint;
+    if (endpoint_estable_peer != NULL) {
+        stable_endpoint_arg = endpoint_estable_peer;
     } else {
         stable_endpoint_arg = "";
     }
 
-    if (context == NULL || context->program_path == NULL || context->config_path == NULL || context->stock_path == NULL || realm == NULL || target_endpoint == NULL || target_endpoint[0] == '\0') {
+    if (context == NULL || context->program_path == NULL || context->config_path == NULL || context->stock_path == NULL || regne == NULL || endpoint_desti == NULL || endpoint_desti[0] == '\0') {
         return false;
     }
 
     pthread_mutex_lock(&context->envoys.mutex);
-    for (i = 0; i < context->envoys.count; ++i) {
-        if (context->envoys.slots[i].status == ENVOY_SLOT_FREE) {
+    for (i = 0; i < context->envoys.num_envoys; ++i) {
+        if (context->envoys.slots[i].estat == ENVOY_SLOT_FREE) {
             slot = &context->envoys.slots[i];
             break;
         }
@@ -263,7 +263,7 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
             "--mission",
             "pledge-response",
             "--realm",
-            (char *) realm,
+            (char *) regne,
             "--file",
             "",
             "--envoy-id",
@@ -271,7 +271,7 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
             "--response",
             (char *) response_text,
             "--target-endpoint",
-            (char *) target_endpoint,
+            (char *) endpoint_desti,
             "--peer-stable-endpoint",
             (char *) stable_endpoint_arg,
             NULL
@@ -284,12 +284,12 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
 
         memset(&header, 0, sizeof(header));
         header.magic = ENVOY_RESULT_MAGIC;
-        header.envoy_id = slot->id;
-        header.mission_type = ENVOY_MISSION_PLEDGE_RESPONSE;
-        header.result_status = ENVOY_RESULT_FAILED;
-        strncpy(header.realm, realm, sizeof(header.realm) - 1);
-        header.realm[sizeof(header.realm) - 1] = '\0';
-        header.payload_size = (uint32_t) (sizeof(payload) - 1);
+        header.id_envoy = slot->id;
+        header.tipus_missio = ENVOY_MISSION_PLEDGE_RESPONSE;
+        header.estat_resultat = ENVOY_RESULT_FAILED;
+        strncpy(header.regne, regne, sizeof(header.regne) - 1);
+        header.regne[sizeof(header.regne) - 1] = '\0';
+        header.mida_payload = (uint32_t) (sizeof(payload) - 1);
         (void) envoy_result_write(pipe_fd[1], &header, payload);
         close(pipe_fd[1]);
         _exit(127);
@@ -298,14 +298,14 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
     close(pipe_fd[1]);
     slot->pid = pid;
     slot->read_fd = pipe_fd[0];
-    slot->status = ENVOY_SLOT_ON_MISSION;
-    slot->mission_type = ENVOY_MISSION_PLEDGE_RESPONSE;
-    slot->response_accepted = accepted;
-    slot->target_realm = utils_strdup_safe(realm);
-    slot->file_path = NULL;
-    slot->started_at = time(NULL);
+    slot->estat = ENVOY_SLOT_ON_MISSION;
+    slot->tipus_missio = ENVOY_MISSION_PLEDGE_RESPONSE;
+    slot->resposta_acceptada = accepted;
+    slot->regne_desti = utils_strdup_safe(regne);
+    slot->ruta_fitxer = NULL;
+    slot->iniciat_a = time(NULL);
 
-    if (slot->target_realm == NULL) {
+    if (slot->regne_desti == NULL) {
         close(slot->read_fd);
         slot->read_fd = -1;
         kill(pid, SIGTERM);
@@ -320,7 +320,7 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
     return true;
 }
 
-bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, const char *realm, const char *file_path) {
+bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType tipus, const char *regne, const char *ruta_fitxer) {
     EnvoySlot *slot = NULL;
     int i = 0;
     int pipe_fd[2] = {-1, -1};
@@ -336,24 +336,24 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
         return false;
     }
 
-    if ((type == ENVOY_MISSION_PLEDGE || type == ENVOY_MISSION_PRODUCTS || type == ENVOY_MISSION_TRADE) && realm == NULL) {
+    if ((tipus == ENVOY_MISSION_PLEDGE || tipus == ENVOY_MISSION_PRODUCTS || tipus == ENVOY_MISSION_TRADE) && regne == NULL) {
         return false;
     }
 
-    mission_text = envoy_mission_exec_text(type);
-    if (file_path != NULL) {
-        file_arg = file_path;
+    mission_text = envoy_mission_exec_text(tipus);
+    if (ruta_fitxer != NULL) {
+        file_arg = ruta_fitxer;
     } else {
         file_arg = "";
     }
     memset(direct_endpoint, 0, sizeof(direct_endpoint));
-    if (realm != NULL) {
-        has_direct_endpoint = network_get_direct_endpoint_for_realm(&context->network, realm, direct_endpoint, sizeof(direct_endpoint));
+    if (regne != NULL) {
+        has_direct_endpoint = network_get_direct_endpoint_for_realm(&context->network, regne, direct_endpoint, sizeof(direct_endpoint));
     }
 
     pthread_mutex_lock(&context->envoys.mutex);
-    for (i = 0; i < context->envoys.count; ++i) {
-        if (context->envoys.slots[i].status == ENVOY_SLOT_FREE) {
+    for (i = 0; i < context->envoys.num_envoys; ++i) {
+        if (context->envoys.slots[i].estat == ENVOY_SLOT_FREE) {
             slot = &context->envoys.slots[i];
             break;
         }
@@ -383,14 +383,14 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
     if (pid == 0) {
         char *direct_endpoint_flag = NULL;
         char *direct_endpoint_value = NULL;
-        char *realm_value = NULL;
+        char *valor_regne = NULL;
 
         if (has_direct_endpoint) {
             direct_endpoint_flag = "--direct-endpoint";
             direct_endpoint_value = direct_endpoint;
         }
 
-        realm_value = (char *) realm;
+        valor_regne = (char *) regne;
 
         char *const argv_worker[] = {
             context->program_path,
@@ -404,7 +404,7 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
             "--mission",
             (char *) mission_text,
             "--realm",
-            realm_value,
+            valor_regne,
             "--file",
             (char *) file_arg,
             "--envoy-id",
@@ -421,23 +421,23 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
 
         memset(&header, 0, sizeof(header));
         header.magic = ENVOY_RESULT_MAGIC;
-        header.envoy_id = slot->id;
-        header.mission_type = (int) type;
-        header.result_status = ENVOY_RESULT_FAILED;
+        header.id_envoy = slot->id;
+        header.tipus_missio = (int) tipus;
+        header.estat_resultat = ENVOY_RESULT_FAILED;
         {
-            const char *realm_value = NULL;
+            const char *valor_regne = NULL;
 
-            if (realm != NULL) {
-                realm_value = realm;
+            if (regne != NULL) {
+                valor_regne = regne;
             } else {
-                realm_value = "";
+                valor_regne = "";
             }
 
-            strncpy(header.realm, realm_value, sizeof(header.realm) - 1);
+            strncpy(header.regne, valor_regne, sizeof(header.regne) - 1);
         }
-        header.realm[sizeof(header.realm) - 1] = '\0';
-        header.remote_endpoint[0] = '\0';
-        header.payload_size = (uint32_t) (sizeof(payload) - 1);
+        header.regne[sizeof(header.regne) - 1] = '\0';
+        header.endpoint_remot[0] = '\0';
+        header.mida_payload = (uint32_t) (sizeof(payload) - 1);
         (void) envoy_result_write(pipe_fd[1], &header, payload);
         close(pipe_fd[1]);
         _exit(127);
@@ -446,17 +446,17 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
     close(pipe_fd[1]);
     slot->pid = pid;
     slot->read_fd = pipe_fd[0];
-    slot->status = ENVOY_SLOT_ON_MISSION;
-    slot->mission_type = type;
-    slot->target_realm = utils_strdup_safe(realm);
-    if (file_path != NULL) {
-        slot->file_path = utils_strdup_safe(file_path);
+    slot->estat = ENVOY_SLOT_ON_MISSION;
+    slot->tipus_missio = tipus;
+    slot->regne_desti = utils_strdup_safe(regne);
+    if (ruta_fitxer != NULL) {
+        slot->ruta_fitxer = utils_strdup_safe(ruta_fitxer);
     } else {
-        slot->file_path = NULL;
+        slot->ruta_fitxer = NULL;
     }
-    slot->started_at = time(NULL);
+    slot->iniciat_a = time(NULL);
 
-    if (slot->target_realm == NULL || (file_path != NULL && slot->file_path == NULL)) {
+    if (slot->regne_desti == NULL || (ruta_fitxer != NULL && slot->ruta_fitxer == NULL)) {
         close(slot->read_fd);
         slot->read_fd = -1;
         kill(pid, SIGTERM);
@@ -474,19 +474,19 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
 void envoy_kill_all(EnvoyManager *manager) {
     int i = 0;
 
-    if (manager == NULL || manager->count < 0) {
+    if (manager == NULL || manager->num_envoys < 0) {
         return;
     }
 
     pthread_mutex_lock(&manager->mutex);
-    for (i = 0; i < manager->count; ++i) {
-        if (manager->slots[i].status == ENVOY_SLOT_ON_MISSION && manager->slots[i].pid > 0) {
+    for (i = 0; i < manager->num_envoys; ++i) {
+        if (manager->slots[i].estat == ENVOY_SLOT_ON_MISSION && manager->slots[i].pid > 0) {
             kill(manager->slots[i].pid, SIGTERM);
         }
     }
     pthread_mutex_unlock(&manager->mutex);
 
-    for (i = 0; i < manager->count; ++i) {
+    for (i = 0; i < manager->num_envoys; ++i) {
         int attempt = 0;
         int status = 0;
         pid_t pid = 0;
@@ -528,19 +528,19 @@ void envoy_kill_all(EnvoyManager *manager) {
 void envoy_manager_destroy(EnvoyManager *manager) {
     int i = 0;
 
-    if (manager == NULL || manager->count < 0) {
+    if (manager == NULL || manager->num_envoys < 0) {
         return;
     }
 
     envoy_kill_all(manager);
 
     pthread_mutex_lock(&manager->mutex);
-    for (i = 0; i < manager->count; ++i) {
+    for (i = 0; i < manager->num_envoys; ++i) {
         envoy_slot_reset(&manager->slots[i]);
     }
     free(manager->slots);
     manager->slots = NULL;
-    manager->count = -1;
+    manager->num_envoys = -1;
     pthread_mutex_unlock(&manager->mutex);
 
     pthread_mutex_destroy(&manager->mutex);
@@ -549,17 +549,17 @@ void envoy_manager_destroy(EnvoyManager *manager) {
 void envoy_print_status(EnvoyManager *manager) {
     int i = 0;
 
-    if (manager == NULL || manager->count < 0 || manager->count == 0) {
+    if (manager == NULL || manager->num_envoys < 0 || manager->num_envoys == 0) {
         utils_println("No Envoys configured.");
         return;
     }
 
     pthread_mutex_lock(&manager->mutex);
-    for (i = 0; i < manager->count; ++i) {
+    for (i = 0; i < manager->num_envoys; ++i) {
         EnvoySlot *slot = &manager->slots[i];
         char *line = NULL;
 
-        if (slot->status == ENVOY_SLOT_FREE) {
+        if (slot->estat == ENVOY_SLOT_FREE) {
             if (asprintf(&line, "- Envoy %d: FREE", slot->id) >= 0 && line != NULL) {
                 utils_println(line);
                 free(line);
@@ -568,15 +568,15 @@ void envoy_print_status(EnvoyManager *manager) {
         }
 
         {
-            const char *target_realm = NULL;
+            const char *regne_desti = NULL;
 
-            if (slot->target_realm != NULL) {
-                target_realm = slot->target_realm;
+            if (slot->regne_desti != NULL) {
+                regne_desti = slot->regne_desti;
             } else {
-                target_realm = "?";
+                regne_desti = "?";
             }
 
-            if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)", slot->id, envoy_mission_text(slot->mission_type), target_realm) >= 0 && line != NULL) {
+            if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)", slot->id, envoy_mission_text(slot->tipus_missio), regne_desti) >= 0 && line != NULL) {
                 utils_println(line);
                 free(line);
             }
@@ -589,7 +589,7 @@ void envoy_reap_finished(struct MaesterContext *context) {
     int status = 0;
     pid_t pid = 0;
 
-    if (context == NULL || context->envoys.count < 0) {
+    if (context == NULL || context->envoys.num_envoys < 0) {
         return;
     }
 
@@ -607,18 +607,18 @@ void envoy_reap_finished(struct MaesterContext *context) {
         slot = envoy_find_slot_by_pid_locked(&context->envoys, pid);
         if (slot != NULL) {
             read_fd = slot->read_fd;
-            mission_type = slot->mission_type;
-            response_accepted = slot->response_accepted;
+            mission_type = slot->tipus_missio;
+            response_accepted = slot->resposta_acceptada;
             {
-                const char *target_realm = NULL;
+                const char *regne_desti = NULL;
 
-                if (slot->target_realm != NULL) {
-                    target_realm = slot->target_realm;
+                if (slot->regne_desti != NULL) {
+                    regne_desti = slot->regne_desti;
                 } else {
-                    target_realm = "";
+                    regne_desti = "";
                 }
 
-                realm = utils_strdup_safe(target_realm);
+                realm = utils_strdup_safe(regne_desti);
             }
         }
         pthread_mutex_unlock(&context->envoys.mutex);
@@ -635,26 +635,26 @@ void envoy_reap_finished(struct MaesterContext *context) {
         }
 
         if (read_ok) {
-            if (header.mission_type == ENVOY_MISSION_PLEDGE) {
+            if (header.tipus_missio == ENVOY_MISSION_PLEDGE) {
                 {
                     const char *result_realm = NULL;
 
-                    if (header.realm[0] != '\0') {
-                        result_realm = header.realm;
+                    if (header.regne[0] != '\0') {
+                        result_realm = header.regne;
                     } else if (realm != NULL) {
                         result_realm = realm;
                     } else {
                         result_realm = "";
                     }
 
-                    network_apply_envoy_pledge_result(&context->network, result_realm, (EnvoyResultStatus) header.result_status, header.remote_endpoint);
+                    network_apply_envoy_pledge_result(&context->network, result_realm, (EnvoyResultStatus) header.estat_resultat, header.endpoint_remot);
                 }
-                if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
+                if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_OK) {
                     char *line = NULL;
                     const char *result_realm = NULL;
 
-                    if (header.realm[0] != '\0') {
-                        result_realm = header.realm;
+                    if (header.regne[0] != '\0') {
+                        result_realm = header.regne;
                     } else if (realm != NULL) {
                         result_realm = realm;
                     } else {
@@ -665,12 +665,12 @@ void envoy_reap_finished(struct MaesterContext *context) {
                         utils_println(line);
                         free(line);
                     }
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_REJECTED) {
+                } else if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_REJECTED) {
                     char *line = NULL;
                     const char *result_realm = NULL;
 
-                    if (header.realm[0] != '\0') {
-                        result_realm = header.realm;
+                    if (header.regne[0] != '\0') {
+                        result_realm = header.regne;
                     } else if (realm != NULL) {
                         result_realm = realm;
                     } else {
@@ -681,12 +681,12 @@ void envoy_reap_finished(struct MaesterContext *context) {
                         utils_println(line);
                         free(line);
                     }
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_TIMEOUT) {
+                } else if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_TIMEOUT) {
                     char *line = NULL;
                     const char *result_realm = NULL;
 
-                    if (header.realm[0] != '\0') {
-                        result_realm = header.realm;
+                    if (header.regne[0] != '\0') {
+                        result_realm = header.regne;
                     } else if (realm != NULL) {
                         result_realm = realm;
                     } else {
@@ -701,8 +701,8 @@ void envoy_reap_finished(struct MaesterContext *context) {
                     char *line = NULL;
                     const char *result_realm = NULL;
 
-                    if (header.realm[0] != '\0') {
-                        result_realm = header.realm;
+                    if (header.regne[0] != '\0') {
+                        result_realm = header.regne;
                     } else if (realm != NULL) {
                         result_realm = realm;
                     } else {
@@ -714,13 +714,13 @@ void envoy_reap_finished(struct MaesterContext *context) {
                         free(line);
                     }
                 }
-            } else if (header.mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
+            } else if (header.tipus_missio == ENVOY_MISSION_PLEDGE_RESPONSE) {
                 const char *result_realm = NULL;
                 const char *payload_text = NULL;
                 const char *alliance_text = NULL;
 
-                if (header.realm[0] != '\0') {
-                    result_realm = header.realm;
+                if (header.regne[0] != '\0') {
+                    result_realm = header.regne;
                 } else if (realm != NULL) {
                     result_realm = realm;
                 } else {
@@ -733,8 +733,8 @@ void envoy_reap_finished(struct MaesterContext *context) {
                     payload_text = "";
                 }
 
-                network_apply_envoy_pledge_response_result(&context->network, result_realm, response_accepted, (EnvoyResultStatus) header.result_status, payload_text);
-                if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
+                network_apply_envoy_pledge_response_result(&context->network, result_realm, response_accepted, (EnvoyResultStatus) header.estat_resultat, payload_text);
+                if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_OK) {
                     char *line = NULL;
 
                     if (response_accepted) {
@@ -754,19 +754,19 @@ void envoy_reap_finished(struct MaesterContext *context) {
                         free(line);
                     }
                 }
-            } else if (header.mission_type == ENVOY_MISSION_PRODUCTS) {
+            } else if (header.tipus_missio == ENVOY_MISSION_PRODUCTS) {
                 const char *result_realm = NULL;
                 const char *payload_text = NULL;
 
-                if (header.realm[0] != '\0') {
-                    result_realm = header.realm;
+                if (header.regne[0] != '\0') {
+                    result_realm = header.regne;
                 } else if (realm != NULL) {
                     result_realm = realm;
                 } else {
                     result_realm = "";
                 }
 
-                if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
+                if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_OK) {
                     if (payload != NULL) {
                         payload_text = payload;
                     } else {
@@ -778,26 +778,26 @@ void envoy_reap_finished(struct MaesterContext *context) {
                     (void) result_realm;
                     utils_println("Connection failed.");
                 }
-            } else if (header.mission_type == ENVOY_MISSION_TRADE) {
+            } else if (header.tipus_missio == ENVOY_MISSION_TRADE) {
                 const char *result_realm = NULL;
                 const char *payload_text = NULL;
 
-                if (header.realm[0] != '\0') {
-                    result_realm = header.realm;
+                if (header.regne[0] != '\0') {
+                    result_realm = header.regne;
                 } else if (realm != NULL) {
                     result_realm = realm;
                 } else {
                     result_realm = "";
                 }
 
-                if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
+                if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_OK) {
                     if (payload != NULL) {
                         payload_text = payload;
                     } else {
                         payload_text = "";
                     }
 
-                    if (network_apply_envoy_trade_result(&context->network, &context->stock, context->stock_path, result_realm, (EnvoyResultStatus) header.result_status, payload_text)) {
+                    if (network_apply_envoy_trade_result(&context->network, &context->stock, context->stock_path, result_realm, (EnvoyResultStatus) header.estat_resultat, payload_text)) {
                         char *line = NULL;
                         if (asprintf(&line, ">>> Order accepted by %s. Stock updated.", result_realm) >= 0 && line != NULL) {
                             utils_println(line);
@@ -810,13 +810,13 @@ void envoy_reap_finished(struct MaesterContext *context) {
                             free(line);
                         }
                     }
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_REJECTED) {
+                } else if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_REJECTED) {
                     char *line = NULL;
                     if (asprintf(&line, ">>> Order rejected by %s.", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
-                } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_TIMEOUT) {
+                } else if ((EnvoyResultStatus) header.estat_resultat == ENVOY_RESULT_TIMEOUT) {
                     char *line = NULL;
                     if (asprintf(&line, ">>> Trade with %s failed (TIMEOUT).", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
@@ -875,7 +875,7 @@ void envoy_reap_finished(struct MaesterContext *context) {
         slot = envoy_find_slot_by_pid_locked(&context->envoys, pid);
         if (slot != NULL) {
             slot->read_fd = -1;
-            slot->mission_type = mission_type;
+            slot->tipus_missio = mission_type;
             envoy_slot_reset(slot);
         }
         pthread_mutex_unlock(&context->envoys.mutex);

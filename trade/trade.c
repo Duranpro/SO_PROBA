@@ -5,17 +5,17 @@
 #include "../utils/utils.h"
 
 typedef struct {
-    char *name;
-    int amount;
+    char *nom;
+    int quantitat;
 } TradeItem;
 
 typedef struct {
-    char *target_realm;
+    char *regne_desti;
     struct MaesterContext *context;
     Product *available_products;
     size_t available_count;
     TradeItem *items;
-    size_t count;
+    size_t num_productes;
 } TradeSession;
 
 static void trade_session_free(TradeSession *session) {
@@ -25,24 +25,24 @@ static void trade_session_free(TradeSession *session) {
         return;
     }
 
-    for (i = 0; i < session->count; ++i) {
-        free(session->items[i].name);
+    for (i = 0; i < session->num_productes; ++i) {
+        free(session->items[i].nom);
     }
 
     free(session->items);
-    free(session->target_realm);
-    stock_free_products(session->available_products, session->available_count);
+    free(session->regne_desti);
+    stock_alliberar_productes(session->available_products, session->available_count);
     session->items = NULL;
-    session->target_realm = NULL;
+    session->regne_desti = NULL;
     session->available_products = NULL;
     session->available_count = 0;
-    session->count = 0;
+    session->num_productes = 0;
 }
 
-static bool trade_parse_item_command(char *rest, char **product_name, int *amount) {
+static bool trade_parse_item_command(char *rest, char **nom_producte, int *quantitat) {
     char *last_space = NULL;
 
-    if (rest == NULL || product_name == NULL || amount == NULL) {
+    if (rest == NULL || nom_producte == NULL || quantitat == NULL) {
         return false;
     }
 
@@ -65,15 +65,15 @@ static bool trade_parse_item_command(char *rest, char **product_name, int *amoun
         return false;
     }
 
-    if (!utils_parse_int(last_space, amount) || *amount <= 0) {
+    if (!utils_parse_int(last_space, quantitat) || *quantitat <= 0) {
         return false;
     }
 
-    *product_name = rest;
+    *nom_producte = rest;
     return true;
 }
 
-static bool trade_add_item(TradeSession *session, const char *product_name, int amount) {
+static bool trade_afegir_item(TradeSession *session, const char *nom_producte, int quantitat) {
     size_t i = 0;
     TradeItem *new_items = NULL;
 
@@ -82,7 +82,7 @@ static bool trade_add_item(TradeSession *session, const char *product_name, int 
     }
 
     for (i = 0; i < session->available_count; ++i) {
-        if (utils_equals_ignore_case(session->available_products[i].name, product_name)) {
+        if (utils_equals_ignore_case(session->available_products[i].nom, nom_producte)) {
             break;
         }
     }
@@ -91,43 +91,43 @@ static bool trade_add_item(TradeSession *session, const char *product_name, int 
         return false;
     }
 
-    for (i = 0; i < session->count; ++i) {
-        if (utils_equals_ignore_case(session->items[i].name, product_name)) {
-            session->items[i].amount += amount;
+    for (i = 0; i < session->num_productes; ++i) {
+        if (utils_equals_ignore_case(session->items[i].nom, nom_producte)) {
+            session->items[i].quantitat += quantitat;
             return true;
         }
     }
 
-    new_items = (TradeItem *) realloc(session->items, sizeof(TradeItem) * (session->count + 1));
+    new_items = (TradeItem *) realloc(session->items, sizeof(TradeItem) * (session->num_productes + 1));
     if (new_items == NULL) {
         return false;
     }
 
     session->items = new_items;
-    session->items[session->count].name = utils_strdup_safe(product_name);
-    session->items[session->count].amount = amount;
+    session->items[session->num_productes].nom = utils_strdup_safe(nom_producte);
+    session->items[session->num_productes].quantitat = quantitat;
 
-    if (session->items[session->count].name == NULL) {
+    if (session->items[session->num_productes].nom == NULL) {
         return false;
     }
 
-    session->count++;
+    session->num_productes++;
     return true;
 }
 
-static bool trade_remove_item(TradeSession *session, const char *product_name, int amount) {
+static bool trade_treure_item(TradeSession *session, const char *nom_producte, int quantitat) {
     size_t i = 0;
 
-    for (i = 0; i < session->count; ++i) {
-        if (utils_equals_ignore_case(session->items[i].name, product_name)) {
-            if (session->items[i].amount <= amount) {
-                free(session->items[i].name);
-                if (i + 1 < session->count) {
-                    memmove(&session->items[i], &session->items[i + 1], sizeof(TradeItem) * (session->count - i - 1));
+    for (i = 0; i < session->num_productes; ++i) {
+        if (utils_equals_ignore_case(session->items[i].nom, nom_producte)) {
+            if (session->items[i].quantitat <= quantitat) {
+                free(session->items[i].nom);
+                if (i + 1 < session->num_productes) {
+                    memmove(&session->items[i], &session->items[i + 1], sizeof(TradeItem) * (session->num_productes - i - 1));
                 }
-                session->count--;
+                session->num_productes--;
             } else {
-                session->items[i].amount -= amount;
+                session->items[i].quantitat -= quantitat;
             }
             return true;
         }
@@ -136,75 +136,75 @@ static bool trade_remove_item(TradeSession *session, const char *product_name, i
     return false;
 }
 
-static bool trade_append_text(char **content, const char *suffix) {
-    char *new_content = NULL;
+static bool trade_append_text(char **contingut, const char *suffix) {
+    char *nou_contingut = NULL;
     int written = 0;
 
-    if (content == NULL || suffix == NULL) {
+    if (contingut == NULL || suffix == NULL) {
         return false;
     }
 
-    if (*content == NULL) {
-        *content = utils_strdup_safe(suffix);
-        return *content != NULL;
+    if (*contingut == NULL) {
+        *contingut = utils_strdup_safe(suffix);
+        return *contingut != NULL;
     }
 
-    written = asprintf(&new_content, "%s%s", *content, suffix);
-    if (written < 0 || new_content == NULL) {
+    written = asprintf(&nou_contingut, "%s%s", *contingut, suffix);
+    if (written < 0 || nou_contingut == NULL) {
         return false;
     }
 
-    free(*content);
-    *content = new_content;
+    free(*contingut);
+    *contingut = nou_contingut;
     return true;
 }
 
-static bool trade_write_shopping_list(const TradeSession *session, char **file_path_out, char **file_name_out, size_t *file_size_out) {
-    char *file_name = NULL;
-    char *path = NULL;
-    char *content = NULL;
+static bool trade_write_shopping_list(const TradeSession *session, char **ruta_fitxer_out, char **nom_fitxer_out, size_t *mida_fitxer_out) {
+    char *nom_fitxer = NULL;
+    char *ruta = NULL;
+    char *contingut = NULL;
     size_t i = 0;
     int written = 0;
 
-    if (session == NULL || session->count == 0) {
+    if (session == NULL || session->num_productes == 0) {
         return false;
     }
 
-    if (!utils_ensure_directory(session->context->config.workdir)) {
+    if (!utils_ensure_directory(session->context->config.directori_carpeta)) {
         return false;
     }
 
-    written = asprintf(&file_name, "shopping_list_%s.txt", session->target_realm);
-    if (written < 0 || file_name == NULL) {
+    written = asprintf(&nom_fitxer, "shopping_list_%s.txt", session->regne_desti);
+    if (written < 0 || nom_fitxer == NULL) {
         return false;
     }
 
-    path = utils_build_path(session->context->config.workdir, file_name);
-    free(file_name);
-    if (path == NULL) {
+    ruta = utils_build_path(session->context->config.directori_carpeta, nom_fitxer);
+    free(nom_fitxer);
+    if (ruta == NULL) {
         return false;
     }
 
-    written = asprintf(&content, "Requester: %s\nTarget: %s\nItems:\n", session->context->config.realm_name, session->target_realm);
-    if (written < 0 || content == NULL) {
-        free(path);
+    written = asprintf(&contingut, "Requester: %s\nTarget: %s\nItems:\n", session->context->config.nom_regne, session->regne_desti);
+    if (written < 0 || contingut == NULL) {
+        free(ruta);
         return false;
     }
 
-    for (i = 0; i < session->count; ++i) {
+    for (i = 0; i < session->num_productes; ++i) {
         char *line = NULL;
 
-        written = asprintf(&line, "- %s x%d\n", session->items[i].name, session->items[i].amount);
+        written = asprintf(&line, "- %s x%d\n", session->items[i].nom, session->items[i].quantitat);
         if (written < 0 || line == NULL) {
-            free(path);
-            free(content);
+            free(ruta);
+            free(contingut);
             return false;
         }
 
-        if (!trade_append_text(&content, line)) {
+        if (!trade_append_text(&contingut, line)) {
             free(line);
-            free(path);
-            free(content);
+            free(ruta);
+            free(contingut);
             return false;
         }
 
@@ -213,51 +213,51 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
 
     {
         char *summary = NULL;
-        written = asprintf(&summary, "Local stock loaded: %zu products\n", stock_count(&session->context->stock));
+        written = asprintf(&summary, "Local stock loaded: %zu products\n", stock_num_productes(&session->context->stock));
         if (written < 0 || summary == NULL) {
-            free(path);
-            free(content);
+            free(ruta);
+            free(contingut);
             return false;
         }
 
-        if (!trade_append_text(&content, summary)) {
+        if (!trade_append_text(&contingut, summary)) {
             free(summary);
-            free(path);
-            free(content);
+            free(ruta);
+            free(contingut);
             return false;
         }
 
         free(summary);
     }
 
-    if (!utils_write_file(path, content)) {
-        free(path);
-        free(content);
+    if (!utils_write_file(ruta, contingut)) {
+        free(ruta);
+        free(contingut);
         return false;
     }
 
-    if (file_path_out != NULL) {
-        *file_path_out = utils_strdup_safe(path);
+    if (ruta_fitxer_out != NULL) {
+        *ruta_fitxer_out = utils_strdup_safe(ruta);
     }
 
-    if (file_name_out != NULL) {
+    if (nom_fitxer_out != NULL) {
         const char *base_name = NULL;
 
-        if (strrchr(path, '/') != NULL) {
-            base_name = strrchr(path, '/') + 1;
+        if (strrchr(ruta, '/') != NULL) {
+            base_name = strrchr(ruta, '/') + 1;
         } else {
-            base_name = path;
+            base_name = ruta;
         }
 
-        *file_name_out = utils_strdup_safe(base_name);
+        *nom_fitxer_out = utils_strdup_safe(base_name);
     }
 
-    if (file_size_out != NULL) {
-        *file_size_out = strlen(content);
+    if (mida_fitxer_out != NULL) {
+        *mida_fitxer_out = strlen(contingut);
     }
 
-    free(path);
-    free(content);
+    free(ruta);
+    free(contingut);
     return true;
 }
 
@@ -268,33 +268,33 @@ static void trade_process_sigchld(struct MaesterContext *context) {
     }
 }
 
-bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
+bool trade_run_local(struct MaesterContext *context, const char *regne_desti) {
     TradeSession session;
     bool keep_running = true;
     char *line = NULL;
 
-    if (context == NULL || target_realm == NULL) {
+    if (context == NULL || regne_desti == NULL) {
         return false;
     }
 
     memset(&session, 0, sizeof(session));
-    session.target_realm = utils_sanitize_realm_name(target_realm);
+    session.regne_desti = utils_sanitize_realm_name(regne_desti);
     session.context = context;
 
-    if (session.target_realm == NULL) {
+    if (session.regne_desti == NULL) {
         return false;
     }
 
     {
         char *message = NULL;
-        int written = asprintf(&message, "Trade with %s begins.\n" "A direct path is open; your houses are allied, and no intermediaries stand in between.\n", session.target_realm);
+        int written = asprintf(&message, "Trade with %s begins.\n" "A direct path is open; your houses are allied, and no intermediaries stand in between.\n", session.regne_desti);
         if (written >= 0 && message != NULL) {
             utils_print(message);
             free(message);
         }
     }
 
-    if (context->network.initialized && network_get_remote_products_copy(&context->network, session.target_realm, &session.available_products, &session.available_count)) {
+    if (context->network.inicialitzat && network_get_remote_products_copy(&context->network, session.regne_desti, &session.available_products, &session.available_count)) {
         size_t i = 0;
         char *line2 = utils_strdup_safe("Available products: ");
         if (line2 != NULL) {
@@ -308,7 +308,7 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
                     separator = ".";
                 }
 
-                if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].name, separator) >= 0 && new_line != NULL) {
+                if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].nom, separator) >= 0 && new_line != NULL) {
                     free(line2);
                     line2 = new_line;
                 }
@@ -323,7 +323,7 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
     while (keep_running) {
         char *copy = NULL;
         char *tokens[CITADEL_MAX_TOKENS] = {0};
-        size_t count = 0;
+        size_t num_items = 0;
 
         trade_process_sigchld(context);
         utils_print("(trade)> ");
@@ -352,8 +352,8 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
             break;
         }
 
-        count = utils_tokenize(copy, tokens, CITADEL_MAX_TOKENS);
-        if (count == 0) {
+        num_items = utils_tokenize(copy, tokens, CITADEL_MAX_TOKENS);
+        if (num_items == 0) {
             free(copy);
             free(line);
             line = NULL;
@@ -361,30 +361,30 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
         }
 
         if (utils_equals_ignore_case(tokens[0], "send")) {
-            if (count != 1) {
+            if (num_items != 1) {
                 utils_println("Unknown command");
-            } else if (session.count == 0) {
+            } else if (session.num_productes == 0) {
                 utils_println("Trade list is empty.");
             } else {
-                char *file_path = NULL;
-                char *file_name = NULL;
-                size_t file_size = 0;
-                bool wrote = trade_write_shopping_list(&session, &file_path, &file_name, &file_size);
+                char *ruta_fitxer = NULL;
+                char *nom_fitxer = NULL;
+                size_t mida_fitxer = 0;
+                bool wrote = trade_write_shopping_list(&session, &ruta_fitxer, &nom_fitxer, &mida_fitxer);
 
                 if (!wrote) {
                     utils_println("Could not write the shopping list. Please try again.");
-                    free(file_path);
-                    free(file_name);
+                    free(ruta_fitxer);
+                    free(nom_fitxer);
                 } else {
-                    if (!envoy_spawn_mission(session.context, ENVOY_MISSION_TRADE, session.target_realm, file_path)) {
+                    if (!envoy_spawn_mission(session.context, ENVOY_MISSION_TRADE, session.regne_desti, ruta_fitxer)) {
                         utils_println("All envoys are occupied. Your command must wait.");
-                        free(file_path);
-                        free(file_name);
+                        free(ruta_fitxer);
+                        free(nom_fitxer);
                     } else {
                         char *message = NULL;
-                        int written = asprintf(&message, "Trade list has been dispatched to %s.", session.target_realm);
-                        free(file_path);
-                        free(file_name);
+                        int written = asprintf(&message, "Trade list has been dispatched to %s.", session.regne_desti);
+                        free(ruta_fitxer);
+                        free(nom_fitxer);
                         if (written >= 0 && message != NULL) {
                             utils_println(message);
                             free(message);
@@ -394,7 +394,7 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
                 }
             }
         } else if (utils_equals_ignore_case(tokens[0], "cancel") || utils_equals_ignore_case(tokens[0], "exit")) {
-            if (count != 1) {
+            if (num_items != 1) {
                 utils_println("Unknown command");
             } else {
                 utils_println("Trade cancelled.");
@@ -402,20 +402,20 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
             }
         } else if (utils_equals_ignore_case(tokens[0], "add") || utils_equals_ignore_case(tokens[0], "remove")) {
             char *rest = line + strlen(tokens[0]);
-            char *product_name = NULL;
-            int amount = 0;
-            bool parsed_ok = trade_parse_item_command(rest, &product_name, &amount);
+            char *nom_producte = NULL;
+            int quantitat = 0;
+            bool parsed_ok = trade_parse_item_command(rest, &nom_producte, &quantitat);
 
             if (!parsed_ok) {
                 utils_println("Invalid amount.");
             } else if (utils_equals_ignore_case(tokens[0], "add")) {
-                if (trade_add_item(&session, product_name, amount)) {
+                if (trade_afegir_item(&session, nom_producte, quantitat)) {
                     utils_println("Product added to trade list.");
                 } else {
                     utils_println("Product not available.");
                 }
             } else {
-                if (trade_remove_item(&session, product_name, amount)) {
+                if (trade_treure_item(&session, nom_producte, quantitat)) {
                     utils_println("Product removed from trade list.");
                 } else {
                     utils_println("Product not available.");

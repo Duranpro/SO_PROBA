@@ -2,28 +2,28 @@
 
 #include "../utils/utils.h"
 
-static bool transfer_file_exists(const char *path) {
-    return path != NULL && access(path, F_OK) == 0;
+static bool transfer_file_exists(const char *ruta) {
+    return ruta != NULL && access(ruta, F_OK) == 0;
 }
 
-static char *transfer_basename_copy(const char *path) {
+static char *transfer_basename_copy(const char *ruta) {
     const char *name = NULL;
 
-    if (path == NULL) {
+    if (ruta == NULL) {
         return NULL;
     }
 
-    name = strrchr(path, '/');
+    name = strrchr(ruta, '/');
     if (name != NULL) {
         name++;
     } else {
-        name = path;
+        name = ruta;
     }
 
     return utils_strdup_safe(name);
 }
 
-bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH + 1]) {
+bool transfer_compute_md5sum(const char *ruta, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     int pipefd[2] = {-1, -1};
     pid_t pid = 0;
     char buffer[256];
@@ -31,7 +31,7 @@ bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH +
     size_t total = 0;
     int status = 0;
 
-    if (path == NULL || md5_out == NULL) {
+    if (ruta == NULL || md5_out == NULL) {
         return false;
     }
 
@@ -50,7 +50,7 @@ bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH +
         dup2(pipefd[1], STDOUT_FILENO);
         close(pipefd[0]);
         close(pipefd[1]);
-        execlp("md5sum", "md5sum", path, (char *) NULL);
+        execlp("md5sum", "md5sum", ruta, (char *) NULL);
         _exit(1);
     }
 
@@ -86,15 +86,15 @@ bool transfer_compute_md5sum(const char *path, char md5_out[CITADEL_MD5_LENGTH +
     return true;
 }
 
-bool transfer_get_file_info(const char *path, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
+bool transfer_obtenir_info_fitxer(const char *ruta, char **nom_fitxer_out, size_t *mida_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
     int fd = -1;
     off_t size = 0;
 
-    if (path == NULL || file_name_out == NULL || size_out == NULL || md5_out == NULL) {
+    if (ruta == NULL || nom_fitxer_out == NULL || mida_out == NULL || md5_out == NULL) {
         return false;
     }
 
-    fd = open(path, O_RDONLY);
+    fd = open(ruta, O_RDONLY);
     if (fd < 0) {
         return false;
     }
@@ -105,18 +105,18 @@ bool transfer_get_file_info(const char *path, char **file_name_out, size_t *size
         return false;
     }
 
-    *file_name_out = transfer_basename_copy(path);
-    if (*file_name_out == NULL) {
+    *nom_fitxer_out = transfer_basename_copy(ruta);
+    if (*nom_fitxer_out == NULL) {
         return false;
     }
 
-    if (!transfer_compute_md5sum(path, md5_out)) {
-        free(*file_name_out);
-        *file_name_out = NULL;
+    if (!transfer_compute_md5sum(ruta, md5_out)) {
+        free(*nom_fitxer_out);
+        *nom_fitxer_out = NULL;
         return false;
     }
 
-    *size_out = (size_t) size;
+    *mida_out = (size_t) size;
     return true;
 }
 
@@ -131,8 +131,8 @@ char *transfer_resolve_sigil_path(const CitadelConfig *config, const char *sigil
         return utils_strdup_safe(sigil_name);
     }
 
-    if (config != NULL && config->workdir != NULL) {
-        candidate = utils_build_path(config->workdir, sigil_name);
+    if (config != NULL && config->directori_carpeta != NULL) {
+        candidate = utils_build_path(config->directori_carpeta, sigil_name);
         if (candidate != NULL && transfer_file_exists(candidate)) {
             return candidate;
         }
@@ -142,235 +142,235 @@ char *transfer_resolve_sigil_path(const CitadelConfig *config, const char *sigil
     return NULL;
 }
 
-bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *stock, char **file_path_out, char **file_name_out, size_t *size_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
-    char *file_name = NULL;
-    char *file_path = NULL;
-    char *content = NULL;
-    Product *snapshot = NULL;
-    size_t snapshot_count = 0;
+bool transfer_write_inventory_file(const CitadelConfig *config, const Stock *stock, char **ruta_fitxer_out, char **nom_fitxer_out, size_t *mida_out, char md5_out[CITADEL_MD5_LENGTH + 1]) {
+    char *nom_fitxer = NULL;
+    char *ruta_fitxer = NULL;
+    char *contingut = NULL;
+    Product *copia_stock = NULL;
+    size_t num_copia_stock = 0;
     size_t i = 0;
     Stock *mutable_stock = (Stock *) stock;
 
-    if (config == NULL || stock == NULL || file_path_out == NULL || file_name_out == NULL || size_out == NULL || md5_out == NULL) {
+    if (config == NULL || stock == NULL || ruta_fitxer_out == NULL || nom_fitxer_out == NULL || mida_out == NULL || md5_out == NULL) {
         return false;
     }
 
-    if (!utils_ensure_directory(config->workdir)) {
+    if (!utils_ensure_directory(config->directori_carpeta)) {
         return false;
     }
 
-    if (asprintf(&file_name, "%s_products.txt", config->realm_name) < 0 || file_name == NULL) {
+    if (asprintf(&nom_fitxer, "%s_products.txt", config->nom_regne) < 0 || nom_fitxer == NULL) {
         return false;
     }
 
-    file_path = utils_build_path(config->workdir, file_name);
-    if (file_path == NULL) {
-        free(file_name);
+    ruta_fitxer = utils_build_path(config->directori_carpeta, nom_fitxer);
+    if (ruta_fitxer == NULL) {
+        free(nom_fitxer);
         return false;
     }
 
-    content = utils_strdup_safe("");
-    if (content == NULL) {
-        free(file_name);
-        free(file_path);
+    contingut = utils_strdup_safe("");
+    if (contingut == NULL) {
+        free(nom_fitxer);
+        free(ruta_fitxer);
         return false;
     }
 
     if (!stock_lock(mutable_stock)) {
-        free(content);
-        free(file_name);
-        free(file_path);
+        free(contingut);
+        free(nom_fitxer);
+        free(ruta_fitxer);
         return false;
     }
 
-    if (stock->count > 0) {
-        snapshot = stock_clone_products(stock->products, stock->count);
-        snapshot_count = stock->count;
+    if (stock->num_productes > 0) {
+        copia_stock = stock_clonar_productes(stock->productes, stock->num_productes);
+        num_copia_stock = stock->num_productes;
     }
 
     stock_unlock(mutable_stock);
 
-    if (snapshot_count > 0 && snapshot == NULL) {
-        free(content);
-        free(file_name);
-        free(file_path);
+    if (num_copia_stock > 0 && copia_stock == NULL) {
+        free(contingut);
+        free(nom_fitxer);
+        free(ruta_fitxer);
         return false;
     }
 
-    for (i = 0; i < snapshot_count; ++i) {
-        char *line = NULL;
-        char *new_content = NULL;
+    for (i = 0; i < num_copia_stock; ++i) {
+        char *linia = NULL;
+        char *nou_contingut = NULL;
 
-        if (asprintf(&line, "%s|%d|%.2f\n", snapshot[i].name, snapshot[i].amount, snapshot[i].weight) < 0 || line == NULL) {
-            free(content);
-            free(file_name);
-            free(file_path);
-            stock_free_products(snapshot, snapshot_count);
+        if (asprintf(&linia, "%s|%d|%.2f\n", copia_stock[i].nom, copia_stock[i].quantitat, copia_stock[i].pes) < 0 || linia == NULL) {
+            free(contingut);
+            free(nom_fitxer);
+            free(ruta_fitxer);
+            stock_alliberar_productes(copia_stock, num_copia_stock);
             return false;
         }
 
-        if (asprintf(&new_content, "%s%s", content, line) < 0 || new_content == NULL) {
-            free(line);
-            free(content);
-            free(file_name);
-            free(file_path);
-            stock_free_products(snapshot, snapshot_count);
+        if (asprintf(&nou_contingut, "%s%s", contingut, linia) < 0 || nou_contingut == NULL) {
+            free(linia);
+            free(contingut);
+            free(nom_fitxer);
+            free(ruta_fitxer);
+            stock_alliberar_productes(copia_stock, num_copia_stock);
             return false;
         }
 
-        free(content);
-        free(line);
-        content = new_content;
+        free(contingut);
+        free(linia);
+        contingut = nou_contingut;
     }
 
-    if (!utils_write_file(file_path, content)) {
-        free(content);
-        free(file_name);
-        free(file_path);
-        stock_free_products(snapshot, snapshot_count);
+    if (!utils_write_file(ruta_fitxer, contingut)) {
+        free(contingut);
+        free(nom_fitxer);
+        free(ruta_fitxer);
+        stock_alliberar_productes(copia_stock, num_copia_stock);
         return false;
     }
 
-    *size_out = strlen(content);
-    free(content);
-    stock_free_products(snapshot, snapshot_count);
+    *mida_out = strlen(contingut);
+    free(contingut);
+    stock_alliberar_productes(copia_stock, num_copia_stock);
 
-    if (!transfer_compute_md5sum(file_path, md5_out)) {
-        free(file_name);
-        free(file_path);
+    if (!transfer_compute_md5sum(ruta_fitxer, md5_out)) {
+        free(nom_fitxer);
+        free(ruta_fitxer);
         return false;
     }
 
-    *file_name_out = file_name;
-    *file_path_out = file_path;
+    *nom_fitxer_out = nom_fitxer;
+    *ruta_fitxer_out = ruta_fitxer;
     return true;
 }
 
-static bool transfer_append_product(Product **products, size_t *count, const char *name, int amount, float weight) {
+static bool transfer_append_product(Product **productes, size_t *num_items, const char *name, int quantitat, float pes) {
     Product *new_products = NULL;
     Product *product = NULL;
 
-    new_products = (Product *) realloc(*products, sizeof(Product) * (*count + 1));
+    new_products = (Product *) realloc(*productes, sizeof(Product) * (*num_items + 1));
     if (new_products == NULL) {
         return false;
     }
 
-    *products = new_products;
-    product = &(*products)[*count];
-    product->name = utils_strdup_safe(name);
-    product->amount = amount;
-    product->weight = weight;
-    if (product->name == NULL) {
+    *productes = new_products;
+    product = &(*productes)[*num_items];
+    product->nom = utils_strdup_safe(name);
+    product->quantitat = quantitat;
+    product->pes = pes;
+    if (product->nom == NULL) {
         return false;
     }
 
-    (*count)++;
+    (*num_items)++;
     return true;
 }
 
-bool transfer_parse_catalog_text(const char *text, Product **products_out, size_t *count_out) {
-    char *content = NULL;
-    char *line = NULL;
+bool transfer_parse_catalog_text(const char *text, Product **productes_out, size_t *num_productes_out) {
+    char *contingut = NULL;
+    char *linia = NULL;
     char *saveptr = NULL;
-    Product *products = NULL;
-    size_t count = 0;
+    Product *productes = NULL;
+    size_t num_items = 0;
 
-    if (text == NULL || products_out == NULL || count_out == NULL) {
+    if (text == NULL || productes_out == NULL || num_productes_out == NULL) {
         return false;
     }
 
-    *products_out = NULL;
-    *count_out = 0;
+    *productes_out = NULL;
+    *num_productes_out = 0;
 
-    content = utils_strdup_safe(text);
-    if (content == NULL) {
+    contingut = utils_strdup_safe(text);
+    if (contingut == NULL) {
         return false;
     }
 
-    line = strtok_r(content, "\n", &saveptr);
-    while (line != NULL) {
-        char *copy = utils_strdup_safe(line);
+    linia = strtok_r(contingut, "\n", &saveptr);
+    while (linia != NULL) {
+        char *copy = utils_strdup_safe(linia);
         char *name = NULL;
         char *amount_text = NULL;
         char *weight_text = NULL;
-        int amount = 0;
-        float weight = 0.0f;
+        int quantitat = 0;
+        float pes = 0.0f;
 
         if (copy == NULL) {
-            free(content);
-            stock_free_products(products, count);
+            free(contingut);
+            stock_alliberar_productes(productes, num_items);
             return false;
         }
 
         name = strtok(copy, "|");
         amount_text = strtok(NULL, "|");
         weight_text = strtok(NULL, "|");
-        if (name != NULL && amount_text != NULL && weight_text != NULL && utils_parse_int(amount_text, &amount) && utils_parse_float(weight_text, &weight)) {
-            if (!transfer_append_product(&products, &count, name, amount, weight)) {
+        if (name != NULL && amount_text != NULL && weight_text != NULL && utils_parse_int(amount_text, &quantitat) && utils_parse_float(weight_text, &pes)) {
+            if (!transfer_append_product(&productes, &num_items, name, quantitat, pes)) {
                 free(copy);
-                free(content);
-                stock_free_products(products, count);
+                free(contingut);
+                stock_alliberar_productes(productes, num_items);
                 return false;
             }
         }
 
         free(copy);
-        line = strtok_r(NULL, "\n", &saveptr);
+        linia = strtok_r(NULL, "\n", &saveptr);
     }
 
-    free(content);
-    *products_out = products;
-    *count_out = count;
+    free(contingut);
+    *productes_out = productes;
+    *num_productes_out = num_items;
     return true;
 }
 
-bool transfer_parse_catalog_file(const char *path, Product **products_out, size_t *count_out) {
-    char *content = NULL;
+bool transfer_parse_catalog_file(const char *ruta, Product **productes_out, size_t *num_productes_out) {
+    char *contingut = NULL;
     bool ok = false;
 
-    if (path == NULL || products_out == NULL || count_out == NULL) {
+    if (ruta == NULL || productes_out == NULL || num_productes_out == NULL) {
         return false;
     }
 
-    content = utils_read_file(path, NULL);
-    if (content == NULL) {
+    contingut = utils_read_file(ruta, NULL);
+    if (contingut == NULL) {
         return false;
     }
 
-    ok = transfer_parse_catalog_text(content, products_out, count_out);
-    free(content);
+    ok = transfer_parse_catalog_text(contingut, productes_out, num_productes_out);
+    free(contingut);
     return ok;
 }
 
-bool transfer_parse_order_text(const char *text, Product **products_out, size_t *count_out) {
-    char *content = NULL;
-    char *line = NULL;
+bool transfer_parse_order_text(const char *text, Product **productes_out, size_t *num_productes_out) {
+    char *contingut = NULL;
+    char *linia = NULL;
     char *saveptr = NULL;
-    Product *products = NULL;
-    size_t count = 0;
+    Product *productes = NULL;
+    size_t num_items = 0;
 
-    if (text == NULL || products_out == NULL || count_out == NULL) {
+    if (text == NULL || productes_out == NULL || num_productes_out == NULL) {
         return false;
     }
 
-    *products_out = NULL;
-    *count_out = 0;
+    *productes_out = NULL;
+    *num_productes_out = 0;
 
-    content = utils_strdup_safe(text);
-    if (content == NULL) {
+    contingut = utils_strdup_safe(text);
+    if (contingut == NULL) {
         return false;
     }
 
-    line = strtok_r(content, "\n", &saveptr);
-    while (line != NULL) {
-        if (strncmp(line, "- ", 2) == 0) {
-            char *copy = utils_strdup_safe(line + 2);
+    linia = strtok_r(contingut, "\n", &saveptr);
+    while (linia != NULL) {
+        if (strncmp(linia, "- ", 2) == 0) {
+            char *copy = utils_strdup_safe(linia + 2);
             char *marker = NULL;
-            int amount = 0;
+            int quantitat = 0;
 
             if (copy == NULL) {
-                free(content);
-                stock_free_products(products, count);
+                free(contingut);
+                stock_alliberar_productes(productes, num_items);
                 return false;
             }
 
@@ -380,11 +380,11 @@ bool transfer_parse_order_text(const char *text, Product **products_out, size_t 
                 marker++;
                 utils_trim(copy);
                 utils_trim(marker);
-                if (utils_parse_int(marker, &amount) && amount > 0) {
-                    if (!transfer_append_product(&products, &count, copy, amount, 0.0f)) {
+                if (utils_parse_int(marker, &quantitat) && quantitat > 0) {
+                    if (!transfer_append_product(&productes, &num_items, copy, quantitat, 0.0f)) {
                         free(copy);
-                        free(content);
-                        stock_free_products(products, count);
+                        free(contingut);
+                        stock_alliberar_productes(productes, num_items);
                         return false;
                     }
                 }
@@ -393,29 +393,29 @@ bool transfer_parse_order_text(const char *text, Product **products_out, size_t 
             free(copy);
         }
 
-        line = strtok_r(NULL, "\n", &saveptr);
+        linia = strtok_r(NULL, "\n", &saveptr);
     }
 
-    free(content);
-    *products_out = products;
-    *count_out = count;
+    free(contingut);
+    *productes_out = productes;
+    *num_productes_out = num_items;
     return true;
 }
 
-bool transfer_parse_order_file(const char *path, Product **products_out, size_t *count_out) {
-    char *content = NULL;
+bool transfer_parse_order_file(const char *ruta, Product **productes_out, size_t *num_productes_out) {
+    char *contingut = NULL;
     bool ok = false;
 
-    if (path == NULL || products_out == NULL || count_out == NULL) {
+    if (ruta == NULL || productes_out == NULL || num_productes_out == NULL) {
         return false;
     }
 
-    content = utils_read_file(path, NULL);
-    if (content == NULL) {
+    contingut = utils_read_file(ruta, NULL);
+    if (contingut == NULL) {
         return false;
     }
 
-    ok = transfer_parse_order_text(content, products_out, count_out);
-    free(content);
+    ok = transfer_parse_order_text(contingut, productes_out, num_productes_out);
+    free(contingut);
     return ok;
 }

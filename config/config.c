@@ -7,11 +7,11 @@ static void config_free_route(RouteInfo *route) {
         return;
     }
 
-    free(route->realm_name);
-    free(route->ip);
-    route->realm_name = NULL;
-    route->ip = NULL;
-    route->port = 0;
+    free(route->nom_regne);
+    free(route->ip_regne);
+    route->nom_regne = NULL;
+    route->ip_regne = NULL;
+    route->port_regne = 0;
 }
 
 void config_init(CitadelConfig *config) {
@@ -19,19 +19,19 @@ void config_init(CitadelConfig *config) {
         return;
     }
 
-    config->realm_name = NULL;
-    config->workdir = NULL;
-    config->envoy_count = 0;
-    config->ip = NULL;
-    config->port = 0;
-    config->routes = NULL;
-    config->route_count = 0;
+    config->nom_regne = NULL;
+    config->directori_carpeta = NULL;
+    config->num_envoys = 0;
+    config->ip_regne = NULL;
+    config->port_regne = 0;
+    config->rutes = NULL;
+    config->num_rutes = 0;
 }
 
 static bool config_append_route(CitadelConfig *config, const char *line) {
     char *copy = utils_strdup_safe(line);
     char *tokens[3] = {0};
-    size_t count = 0;
+    size_t num_items = 0;
     RouteInfo *new_routes = NULL;
     RouteInfo *route = NULL;
 
@@ -40,47 +40,47 @@ static bool config_append_route(CitadelConfig *config, const char *line) {
     }
 
     utils_trim(copy);
-    count = utils_tokenize(copy, tokens, 3);
-    if (count != 3) {
+    num_items = utils_tokenize(copy, tokens, 3);
+    if (num_items != 3) {
         free(copy);
         return false;
     }
 
-    new_routes = (RouteInfo *) realloc(config->routes, sizeof(RouteInfo) * (config->route_count + 1));
+    new_routes = (RouteInfo *) realloc(config->rutes, sizeof(RouteInfo) * (config->num_rutes + 1));
     if (new_routes == NULL) {
         free(copy);
         return false;
     }
 
-    config->routes = new_routes;
-    route = &config->routes[config->route_count];
-    route->realm_name = utils_sanitize_realm_name(tokens[0]);
-    route->ip = utils_strdup_safe(tokens[1]);
-    route->port = 0;
+    config->rutes = new_routes;
+    route = &config->rutes[config->num_rutes];
+    route->nom_regne = utils_sanitize_realm_name(tokens[0]);
+    route->ip_regne = utils_strdup_safe(tokens[1]);
+    route->port_regne = 0;
 
-    if (route->realm_name == NULL || route->ip == NULL || !utils_parse_int(tokens[2], &route->port)) {
+    if (route->nom_regne == NULL || route->ip_regne == NULL || !utils_parse_int(tokens[2], &route->port_regne)) {
         config_free_route(route);
         free(copy);
         return false;
     }
 
-    config->route_count++;
+    config->num_rutes++;
     free(copy);
     return true;
 }
 
-bool config_load(const char *path, CitadelConfig *config) {
+bool config_load(const char *ruta, CitadelConfig *config) {
     char *buffer = NULL;
     char *saveptr = NULL;
     char *line = NULL;
     int field_index = 0;
     bool routes_started = false;
 
-    if (path == NULL || config == NULL) {
+    if (ruta == NULL || config == NULL) {
         return false;
     }
 
-    buffer = utils_read_file(path, NULL);
+    buffer = utils_read_file(ruta, NULL);
     if (buffer == NULL) {
         return false;
     }
@@ -99,22 +99,22 @@ bool config_load(const char *path, CitadelConfig *config) {
 
             switch (field_index) {
                 case 0:
-                    config->realm_name = utils_sanitize_realm_name(line);
+                    config->nom_regne = utils_sanitize_realm_name(line);
                     break;
                 case 1:
-                    config->workdir = utils_strdup_safe(line);
+                    config->directori_carpeta = utils_strdup_safe(line);
                     break;
                 case 2:
-                    if (!utils_parse_int(line, &config->envoy_count)) {
+                    if (!utils_parse_int(line, &config->num_envoys)) {
                         free(buffer);
                         return false;
                     }
                     break;
                 case 3:
-                    config->ip = utils_strdup_safe(line);
+                    config->ip_regne = utils_strdup_safe(line);
                     break;
                 case 4:
-                    if (!utils_parse_int(line, &config->port)) {
+                    if (!utils_parse_int(line, &config->port_regne)) {
                         free(buffer);
                         return false;
                     }
@@ -136,7 +136,7 @@ bool config_load(const char *path, CitadelConfig *config) {
 
     free(buffer);
 
-    if (field_index < 5 || !routes_started || config->realm_name == NULL || config->workdir == NULL || config->ip == NULL) {
+    if (field_index < 5 || !routes_started || config->nom_regne == NULL || config->directori_carpeta == NULL || config->ip_regne == NULL) {
         return false;
     }
 
@@ -150,28 +150,28 @@ void config_free(CitadelConfig *config) {
         return;
     }
 
-    free(config->realm_name);
-    free(config->workdir);
-    free(config->ip);
+    free(config->nom_regne);
+    free(config->directori_carpeta);
+    free(config->ip_regne);
 
-    for (i = 0; i < config->route_count; ++i) {
-        config_free_route(&config->routes[i]);
+    for (i = 0; i < config->num_rutes; ++i) {
+        config_free_route(&config->rutes[i]);
     }
 
-    free(config->routes);
+    free(config->rutes);
     config_init(config);
 }
 
-const RouteInfo *config_find_route(const CitadelConfig *config, const char *realm_name) {
+const RouteInfo *config_find_route(const CitadelConfig *config, const char *nom_regne) {
     size_t i = 0;
 
-    if (config == NULL || realm_name == NULL) {
+    if (config == NULL || nom_regne == NULL) {
         return NULL;
     }
 
-    for (i = 0; i < config->route_count; ++i) {
-        if (utils_equals_ignore_case(config->routes[i].realm_name, realm_name)) {
-            return &config->routes[i];
+    for (i = 0; i < config->num_rutes; ++i) {
+        if (utils_equals_ignore_case(config->rutes[i].nom_regne, nom_regne)) {
+            return &config->rutes[i];
         }
     }
 
@@ -186,15 +186,15 @@ void config_print_realms(const CitadelConfig *config) {
         return;
     }
 
-    for (i = 0; i < config->route_count; ++i) {
+    for (i = 0; i < config->num_rutes; ++i) {
         char *line = NULL;
         int written = 0;
 
-        if (utils_equals_ignore_case(config->routes[i].realm_name, "DEFAULT")) {
+        if (utils_equals_ignore_case(config->rutes[i].nom_regne, "DEFAULT")) {
             continue;
         }
 
-        written = asprintf(&line, "- %s\n", config->routes[i].realm_name);
+        written = asprintf(&line, "- %s\n", config->rutes[i].nom_regne);
         if (written >= 0 && line != NULL) {
             utils_print(line);
             free(line);

@@ -8,22 +8,22 @@ void frame_init(NetworkFrame *frame) {
     memset(frame, 0, sizeof(*frame));
 }
 
-bool frame_set(NetworkFrame *frame, uint8_t type, const char *origin, const char *destination, const void *data, size_t data_length) {
-    if (frame == NULL || origin == NULL || destination == NULL || data_length > CITADEL_FRAME_DATA_SIZE) {
+bool frame_set(NetworkFrame *frame, uint8_t tipus, const char *origen, const char *destination, const void *data, size_t mida_data) {
+    if (frame == NULL || origen == NULL || destination == NULL || mida_data > CITADEL_FRAME_DATA_SIZE) {
         return false;
     }
 
     frame_init(frame);
-    frame->type = type;
-    strncpy(frame->origin, origin, CITADEL_FRAME_ORIGIN_SIZE);
+    frame->tipus = tipus;
+    strncpy(frame->origen, origen, CITADEL_FRAME_ORIGIN_SIZE);
     strncpy(frame->destination, destination, CITADEL_FRAME_DESTINATION_SIZE);
 
-    if (data != NULL && data_length > 0) {
-        memcpy(frame->data, data, data_length);
+    if (data != NULL && mida_data > 0) {
+        memcpy(frame->data, data, mida_data);
     }
 
-    frame->data_length = (uint16_t) data_length;
-    frame->checksum = frame_calculate_checksum(frame);
+    frame->mida_data = (uint16_t) mida_data;
+    frame->checksum = frame_calcular_checksum(frame);
     return true;
 }
 
@@ -35,13 +35,13 @@ void frame_serialize(const NetworkFrame *frame, unsigned char buffer[CITADEL_FRA
         return;
     }
 
-    buffer[0] = frame->type;
-    memcpy(buffer + 1, frame->origin, strnlen(frame->origin, CITADEL_FRAME_ORIGIN_SIZE));
+    buffer[0] = frame->tipus;
+    memcpy(buffer + 1, frame->origen, strnlen(frame->origen, CITADEL_FRAME_ORIGIN_SIZE));
     memcpy(buffer + 21, frame->destination, strnlen(frame->destination, CITADEL_FRAME_DESTINATION_SIZE));
 
-    net_value = htons(frame->data_length);
+    net_value = htons(frame->mida_data);
     memcpy(buffer + 41, &net_value, sizeof(net_value));
-    memcpy(buffer + 43, frame->data, frame->data_length);
+    memcpy(buffer + 43, frame->data, frame->mida_data);
 
     net_value = htons(frame->checksum);
     memcpy(buffer + 318, &net_value, sizeof(net_value));
@@ -55,26 +55,26 @@ bool frame_deserialize(const unsigned char buffer[CITADEL_FRAME_SIZE], NetworkFr
     }
 
     frame_init(frame);
-    frame->type = buffer[0];
-    memcpy(frame->origin, buffer + 1, CITADEL_FRAME_ORIGIN_SIZE);
+    frame->tipus = buffer[0];
+    memcpy(frame->origen, buffer + 1, CITADEL_FRAME_ORIGIN_SIZE);
     memcpy(frame->destination, buffer + 21, CITADEL_FRAME_DESTINATION_SIZE);
-    frame->origin[CITADEL_FRAME_ORIGIN_SIZE] = '\0';
+    frame->origen[CITADEL_FRAME_ORIGIN_SIZE] = '\0';
     frame->destination[CITADEL_FRAME_DESTINATION_SIZE] = '\0';
 
     memcpy(&net_value, buffer + 41, sizeof(net_value));
-    frame->data_length = ntohs(net_value);
-    if (frame->data_length > CITADEL_FRAME_DATA_SIZE) {
+    frame->mida_data = ntohs(net_value);
+    if (frame->mida_data > CITADEL_FRAME_DATA_SIZE) {
         return false;
     }
 
-    memcpy(frame->data, buffer + 43, frame->data_length);
+    memcpy(frame->data, buffer + 43, frame->mida_data);
 
     memcpy(&net_value, buffer + 318, sizeof(net_value));
     frame->checksum = ntohs(net_value);
     return true;
 }
 
-uint16_t frame_calculate_checksum(const NetworkFrame *frame) {
+uint16_t frame_calcular_checksum(const NetworkFrame *frame) {
     unsigned char buffer[CITADEL_FRAME_SIZE];
     uint32_t total = 0;
     size_t i = 0;
@@ -94,12 +94,12 @@ uint16_t frame_calculate_checksum(const NetworkFrame *frame) {
     return (uint16_t) (total % 65536U);
 }
 
-bool frame_validate_checksum(const NetworkFrame *frame) {
+bool frame_validar_checksum(const NetworkFrame *frame) {
     if (frame == NULL) {
         return false;
     }
 
-    return frame->checksum == frame_calculate_checksum(frame);
+    return frame->checksum == frame_calcular_checksum(frame);
 }
 
 char *frame_data_to_text(const NetworkFrame *frame) {
@@ -109,12 +109,12 @@ char *frame_data_to_text(const NetworkFrame *frame) {
         return NULL;
     }
 
-    text = (char *) malloc((size_t) frame->data_length + 1);
+    text = (char *) malloc((size_t) frame->mida_data + 1);
     if (text == NULL) {
         return NULL;
     }
 
-    memcpy(text, frame->data, frame->data_length);
-    text[frame->data_length] = '\0';
+    memcpy(text, frame->data, frame->mida_data);
+    text[frame->mida_data] = '\0';
     return text;
 }

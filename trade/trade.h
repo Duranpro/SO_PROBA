@@ -5,6 +5,6 @@
 
 struct MaesterContext;
 
-bool trade_run_local(struct MaesterContext *context, const char *target_realm);
+bool trade_run_local(struct MaesterContext *context, const char *regne_desti);
 
 #endif

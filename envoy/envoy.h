@@ -29,39 +29,39 @@ typedef enum {
 
 typedef struct {
     uint32_t magic;
-    int envoy_id;
-    int mission_type;
-    int result_status;
-    char realm[64];
-    char remote_endpoint[128];
-    uint32_t payload_size;
+    int id_envoy;
+    int tipus_missio;
+    int estat_resultat;
+    char regne[64];
+    char endpoint_remot[128];
+    uint32_t mida_payload;
 } EnvoyResultHeader;
 
 typedef struct {
     int id;
     pid_t pid;
     int read_fd;
-    EnvoySlotStatus status;
-    EnvoyMissionType mission_type;
-    bool response_accepted;
-    char *target_realm;
-    char *file_path;
-    time_t started_at;
+    EnvoySlotStatus estat;
+    EnvoyMissionType tipus_missio;
+    bool resposta_acceptada;
+    char *regne_desti;
+    char *ruta_fitxer;
+    time_t iniciat_a;
 } EnvoySlot;
 
 typedef struct {
     EnvoySlot *slots;
-    int count;
+    int num_envoys;
     pthread_mutex_t mutex;
 } EnvoyManager;
 
-bool envoy_manager_init(EnvoyManager *manager, int count);
+bool envoy_manager_init(EnvoyManager *manager, int num_envoys);
 void envoy_manager_destroy(EnvoyManager *manager);
 void envoy_print_status(EnvoyManager *manager);
 void envoy_reap_finished(struct MaesterContext *context);
 void envoy_kill_all(EnvoyManager *manager);
-bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, const char *realm, const char *file_path);
-bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *realm, bool accepted, const char *target_endpoint, const char *peer_stable_endpoint);
+bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType tipus, const char *regne, const char *ruta_fitxer);
+bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *regne, bool accepted, const char *endpoint_desti, const char *endpoint_estable_peer);
 bool envoy_result_write(int fd, const EnvoyResultHeader *header, const void *payload);
 bool envoy_result_read(int fd, EnvoyResultHeader *header, char **payload_out);
 

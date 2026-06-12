@@ -11,42 +11,42 @@ static void commands_print_incomplete(const char *message) {
     utils_println(message);
 }
 
-static bool commands_realm_exists(const CitadelConfig *config, const char *realm_name) {
+static bool commands_realm_exists(const CitadelConfig *config, const char *nom_regne) {
     const RouteInfo *route = NULL;
 
-    if (config == NULL || realm_name == NULL) {
+    if (config == NULL || nom_regne == NULL) {
         return false;
     }
 
-    route = config_find_route(config, realm_name);
+    route = config_find_route(config, nom_regne);
     if (route == NULL) {
         return false;
     }
 
-    return !utils_equals_ignore_case(route->realm_name, "DEFAULT");
+    return !utils_equals_ignore_case(route->nom_regne, "DEFAULT");
 }
 
-static void commands_print_trade_authorization_error(const char *realm_name) {
+static void commands_print_trade_authorization_error(const char *nom_regne) {
     char *line = NULL;
 
-    if (realm_name == NULL) {
+    if (nom_regne == NULL) {
         return;
     }
 
-    if (asprintf(&line, "The gates of commerce with %s remain closed; no alliance binds you.", realm_name) >= 0 && line != NULL) {
+    if (asprintf(&line, "The gates of commerce with %s remain closed; no alliance binds you.", nom_regne) >= 0 && line != NULL) {
         utils_println(line);
         free(line);
     }
 }
 
-static bool commands_handle_list(MaesterContext *context, char **tokens, size_t count) {
-    if (count == 1) {
+static bool commands_handle_list(MaesterContext *context, char **tokens, size_t num_items) {
+    if (num_items == 1) {
         commands_print_incomplete("LIST needs a target. Try LIST REALMS or LIST PRODUCTS.");
         return true;
     }
 
     if (utils_equals_ignore_case(tokens[1], "REALMS")) {
-        if (count == 2) {
+        if (num_items == 2) {
             config_print_realms(&context->config);
             return true;
         }
@@ -55,11 +55,11 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
     }
 
     if (utils_equals_ignore_case(tokens[1], "PRODUCTS")) {
-        if (count == 2) {
+        if (num_items == 2) {
             stock_print_local(&context->stock);
             return true;
         }
-        if (count == 3) {
+        if (num_items == 3) {
             if (!commands_realm_exists(&context->config, tokens[2])) {
                 utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
                 return true;
@@ -82,14 +82,14 @@ static bool commands_handle_list(MaesterContext *context, char **tokens, size_t 
     return true;
 }
 
-static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_t count) {
-    if (count == 1) {
+static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_t num_items) {
+    if (num_items == 1) {
         commands_print_incomplete("PLEDGE needs more arguments. Use PLEDGE <REALM> <sigil.jpg>, PLEDGE RESPOND <REALM> ACCEPT/REJECT or PLEDGE STATUS.");
         return true;
     }
 
     if (utils_equals_ignore_case(tokens[1], "STATUS")) {
-        if (count == 2) {
+        if (num_items == 2) {
             network_print_pledge_status(&context->network);
             return true;
         }
@@ -98,19 +98,19 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
     }
 
     if (utils_equals_ignore_case(tokens[1], "RESPOND")) {
-        if (count < 4) {
+        if (num_items < 4) {
             commands_print_incomplete("PLEDGE RESPOND is incomplete. Use PLEDGE RESPOND <REALM> ACCEPT or PLEDGE RESPOND <REALM> REJECT.");
             return true;
         }
-        if (count == 4 && (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
+        if (num_items == 4 && (utils_equals_ignore_case(tokens[3], "ACCEPT") || utils_equals_ignore_case(tokens[3], "REJECT"))) {
             bool accepted = utils_equals_ignore_case(tokens[3], "ACCEPT");
-            char target_endpoint[128];
-            char peer_stable_endpoint[128];
+            char endpoint_desti[128];
+            char endpoint_estable_peer[128];
 
-            memset(target_endpoint, 0, sizeof(target_endpoint));
-            memset(peer_stable_endpoint, 0, sizeof(peer_stable_endpoint));
+            memset(endpoint_desti, 0, sizeof(endpoint_desti));
+            memset(endpoint_estable_peer, 0, sizeof(endpoint_estable_peer));
 
-            if (!network_prepare_pledge_response_mission(&context->network, tokens[2], accepted, target_endpoint, sizeof(target_endpoint), peer_stable_endpoint, sizeof(peer_stable_endpoint))) {
+            if (!network_prepare_pledge_response_mission(&context->network, tokens[2], accepted, endpoint_desti, sizeof(endpoint_desti), endpoint_estable_peer, sizeof(endpoint_estable_peer))) {
                 char *line = NULL;
                 if (asprintf(&line, "No pending pledge from %s.", tokens[2]) >= 0 && line != NULL) {
                     utils_println(line);
@@ -119,7 +119,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
                 return true;
             }
 
-            if (!envoy_spawn_pledge_response(context, tokens[2], accepted, target_endpoint, peer_stable_endpoint)) {
+            if (!envoy_spawn_pledge_response(context, tokens[2], accepted, endpoint_desti, endpoint_estable_peer)) {
                 network_revert_pledge_response_mission(&context->network, tokens[2]);
                 utils_println("All envoys are occupied. Your command must wait.");
                 return true;
@@ -130,12 +130,12 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
         return true;
     }
 
-    if (count == 2) {
+    if (num_items == 2) {
         commands_print_incomplete("PLEDGE is missing the sigil file. Use PLEDGE <REALM> <sigil.jpg>.");
         return true;
     }
 
-    if (count == 3) {
+    if (num_items == 3) {
         if (!commands_realm_exists(&context->config, tokens[1])) {
             utils_println("No such realm exists. The pledge is hereby withdrawn.");
             return true;
@@ -167,8 +167,8 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
     return true;
 }
 
-static bool commands_handle_start(MaesterContext *context, char **tokens, size_t count) {
-    if (count == 1) {
+static bool commands_handle_start(MaesterContext *context, char **tokens, size_t num_items) {
+    if (num_items == 1) {
         commands_print_incomplete("START needs a subcommand. For this phase, use START TRADE <REALM>.");
         return true;
     }
@@ -178,12 +178,12 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
         return true;
     }
 
-    if (count == 2) {
+    if (num_items == 2) {
         commands_print_incomplete("Missing arguments, can't start a trade. Please review the syntax.");
         return true;
     }
 
-    if (count == 3) {
+    if (num_items == 3) {
         if (!commands_realm_exists(&context->config, tokens[2])) {
             utils_println("Unknown realm. Use LIST REALMS to see the available kingdoms.");
             return true;
@@ -200,29 +200,29 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
     return true;
 }
 
-static bool commands_handle_envoy(MaesterContext *context, char **tokens, size_t count) {
-    if (count == 1) {
+static bool commands_handle_envoy(MaesterContext *context, char **tokens, size_t num_items) {
+    if (num_items == 1) {
         commands_print_incomplete("ENVOY needs a subcommand. Use ENVOY STATUS.");
         return true;
     }
 
-    if (count == 2 && utils_equals_ignore_case(tokens[1], "STATUS")) {
+    if (num_items == 2 && utils_equals_ignore_case(tokens[1], "STATUS")) {
         envoy_print_status(&context->envoys);
         return true;
     }
 
-    if (count >= 4 && utils_equals_ignore_case(tokens[1], "TEST")) {
-        if (utils_equals_ignore_case(tokens[2], "PLEDGE") && count == 4) {
+    if (num_items >= 4 && utils_equals_ignore_case(tokens[1], "TEST")) {
+        if (utils_equals_ignore_case(tokens[2], "PLEDGE") && num_items == 4) {
             (void) envoy_spawn_mission(context, ENVOY_MISSION_PLEDGE, tokens[3], "stub-sigil");
             return true;
         }
 
-        if (utils_equals_ignore_case(tokens[2], "PRODUCTS") && count == 4) {
+        if (utils_equals_ignore_case(tokens[2], "PRODUCTS") && num_items == 4) {
             (void) envoy_spawn_mission(context, ENVOY_MISSION_PRODUCTS, tokens[3], NULL);
             return true;
         }
 
-        if (utils_equals_ignore_case(tokens[2], "TRADE") && count == 5) {
+        if (utils_equals_ignore_case(tokens[2], "TRADE") && num_items == 5) {
             (void) envoy_spawn_mission(context, ENVOY_MISSION_TRADE, tokens[3], tokens[4]);
             return true;
         }
@@ -235,7 +235,7 @@ static bool commands_handle_envoy(MaesterContext *context, char **tokens, size_t
 bool commands_dispatch(MaesterContext *context, const char *line) {
     char *copy = NULL;
     char *tokens[CITADEL_MAX_TOKENS] = {0};
-    size_t count = 0;
+    size_t num_items = 0;
     bool keep_running = true;
 
     if (context == NULL || line == NULL) {
@@ -248,22 +248,22 @@ bool commands_dispatch(MaesterContext *context, const char *line) {
         return true;
     }
 
-    count = utils_tokenize(copy, tokens, CITADEL_MAX_TOKENS);
-    if (count == 0) {
+    num_items = utils_tokenize(copy, tokens, CITADEL_MAX_TOKENS);
+    if (num_items == 0) {
         free(copy);
         return true;
     }
 
     if (utils_equals_ignore_case(tokens[0], "LIST")) {
-        keep_running = commands_handle_list(context, tokens, count);
+        keep_running = commands_handle_list(context, tokens, num_items);
     } else if (utils_equals_ignore_case(tokens[0], "PLEDGE")) {
-        keep_running = commands_handle_pledge(context, tokens, count);
+        keep_running = commands_handle_pledge(context, tokens, num_items);
     } else if (utils_equals_ignore_case(tokens[0], "START")) {
-        keep_running = commands_handle_start(context, tokens, count);
+        keep_running = commands_handle_start(context, tokens, num_items);
     } else if (utils_equals_ignore_case(tokens[0], "ENVOY")) {
-        keep_running = commands_handle_envoy(context, tokens, count);
+        keep_running = commands_handle_envoy(context, tokens, num_items);
     } else if (utils_equals_ignore_case(tokens[0], "EXIT")) {
-        if (count == 1) {
+        if (num_items == 1) {
             keep_running = false;
         } else {
             utils_println("Unknown command");
