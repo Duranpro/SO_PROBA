@@ -824,6 +824,7 @@ static bool network_begin_inbound_transfer(NetworkContext *network, TransferKind
                                            const char *md5_text) {
     char *file_path = NULL;
     int file_fd = -1;
+    bool ok = false;
 
     if (network == NULL || realm_name == NULL || origin_endpoint == NULL || file_name == NULL || md5_text == NULL) {
         return false;
@@ -857,9 +858,14 @@ static bool network_begin_inbound_transfer(NetworkContext *network, TransferKind
     strncpy(network->inbound.md5, md5_text, CITADEL_MD5_LENGTH);
     network->inbound.md5[CITADEL_MD5_LENGTH] = '\0';
 
-    return network->inbound.realm_name != NULL &&
-           network->inbound.origin_endpoint != NULL &&
-           network->inbound.file_name != NULL;
+    ok = network->inbound.realm_name != NULL &&
+         network->inbound.origin_endpoint != NULL &&
+         network->inbound.file_name != NULL;
+    if (!ok) {
+        network_inbound_reset(network);
+    }
+
+    return ok;
 }
 
 static bool network_send_outbound_file_data(NetworkContext *network) {
@@ -2107,6 +2113,14 @@ static bool network_init_alliances(NetworkContext *network) {
         }
         network->alliances[count].realm_name = utils_strdup_safe(network->config->routes[i].realm_name);
         if (network->alliances[count].realm_name == NULL) {
+            size_t j = 0;
+            for (j = 0; j < count; ++j) {
+                free(network->alliances[j].realm_name);
+                network->alliances[j].realm_name = NULL;
+            }
+            free(network->alliances);
+            network->alliances = NULL;
+            network->alliance_count = 0;
             return false;
         }
         count++;
@@ -2143,6 +2157,12 @@ bool network_init(NetworkContext *network, CitadelConfig *config, Stock *stock) 
 
     network->server_fd = network_create_listener(config);
     if (network->server_fd == CITADEL_INVALID_SOCKET) {
+        for (size_t i = 0; i < network->alliance_count; ++i) {
+            network_alliance_free(&network->alliances[i]);
+        }
+        free(network->alliances);
+        network->alliances = NULL;
+        network->alliance_count = 0;
         pthread_mutex_destroy(&network->lock);
         network_socket_cleanup();
         return false;
@@ -2151,6 +2171,13 @@ bool network_init(NetworkContext *network, CitadelConfig *config, Stock *stock) 
     network->running = true;
     if (pthread_create(&network->server_thread, NULL, network_server_main, network) != 0) {
         CITADEL_SOCKET_CLOSE(network->server_fd);
+        network->server_fd = CITADEL_INVALID_SOCKET;
+        for (size_t i = 0; i < network->alliance_count; ++i) {
+            network_alliance_free(&network->alliances[i]);
+        }
+        free(network->alliances);
+        network->alliances = NULL;
+        network->alliance_count = 0;
         pthread_mutex_destroy(&network->lock);
         network_socket_cleanup();
         return false;
