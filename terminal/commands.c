@@ -145,7 +145,7 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
     }
 
     if (count == 2) {
-        utils_println("No such realm exists. The pledge is hereby withdrawn.");
+        commands_print_incomplete("PLEDGE is missing the sigil file. Use PLEDGE <REALM> <sigil.jpg>.");
         return true;
     }
 

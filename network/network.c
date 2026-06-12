@@ -95,7 +95,7 @@ static const char *network_status_text(AllianceStatus status) {
         case ALLIANCE_FAILED:
             return "FAILED";
         case ALLIANCE_INACTIVE:
-            return "FAILED";
+            return "INACTIVE";
         case ALLIANCE_NONE:
         default:
             return "NONE";
