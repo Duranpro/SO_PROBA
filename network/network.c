@@ -988,8 +988,18 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
     ok = transfer_compute_md5sum(network->inbound.file_path, md5) &&
          strcmp(md5, network->inbound.md5) == 0;
 
-    if (!network_send_blank_reply_with_realm_fallback(network, network->inbound.origin_endpoint, network->inbound.realm_name, FRAME_TYPE_MD5_ACK, ok ? "CHECK_OK" : "CHECK_KO", network->config->realm_name)) {
-        ok = false;
+    {
+        const char *md5_status = NULL;
+
+        if (ok) {
+            md5_status = "CHECK_OK";
+        } else {
+            md5_status = "CHECK_KO";
+        }
+
+        if (!network_send_blank_reply_with_realm_fallback(network, network->inbound.origin_endpoint, network->inbound.realm_name, FRAME_TYPE_MD5_ACK, md5_status, network->config->realm_name)) {
+            ok = false;
+        }
     }
 
     if (!ok) {
@@ -1047,7 +1057,11 @@ static bool network_finalize_inbound_transfer(NetworkContext *network) {
                 if (reason != NULL && strcmp(reason, "OUT_OF_STOCK") == 0) {
                     network_println("The vaults stand empty; the order cannot be fulfilled");
                 }
-                payload = reason != NULL ? reason : "REJECT";
+                if (reason != NULL) {
+                    payload = reason;
+                } else {
+                    payload = "REJECT";
+                }
             }
 
             if (origin != NULL) {
@@ -1165,7 +1179,17 @@ static void network_handle_pledge(NetworkContext *network, const NetworkFrame *f
     }
     pthread_mutex_unlock(&network->lock);
 
-    network_send_blank_reply_with_realm_fallback(network, frame->origin, origin_realm, FRAME_TYPE_ACK, ok ? "OK" : "KO", network->config->realm_name);
+    {
+        const char *ack_status = NULL;
+
+        if (ok) {
+            ack_status = "OK";
+        } else {
+            ack_status = "KO";
+        }
+
+        network_send_blank_reply_with_realm_fallback(network, frame->origin, origin_realm, FRAME_TYPE_ACK, ack_status, network->config->realm_name);
+    }
     if (ok) {
         char *line = NULL;
         if (asprintf(&line, "Alliance request received from %s.", origin_realm) >= 0 && line != NULL) {
@@ -1239,7 +1263,15 @@ static void network_handle_pledge_response(NetworkContext *network, const Networ
 
     if (!stale) {
         char *line = NULL;
-        if (asprintf(&line, "Alliance with %s %s.", realm_name, accepted ? "established" : "rejected") >= 0 && line != NULL) {
+        const char *alliance_text = NULL;
+
+        if (accepted) {
+            alliance_text = "established";
+        } else {
+            alliance_text = "rejected";
+        }
+
+        if (asprintf(&line, "Alliance with %s %s.", realm_name, alliance_text) >= 0 && line != NULL) {
             utils_println(line);
             free(line);
         }
@@ -1324,7 +1356,17 @@ static void network_handle_products_header(NetworkContext *network, const Networ
         pthread_mutex_unlock(&network->lock);
     }
 
-    network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK, ok ? "OK" : "KO", network->config->realm_name);
+    {
+        const char *ack_status = NULL;
+
+        if (ok) {
+            ack_status = "OK";
+        } else {
+            ack_status = "KO";
+        }
+
+        network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK, ack_status, network->config->realm_name);
+    }
     free(file_name);
     free(realm_name);
     free(data);
@@ -1383,7 +1425,17 @@ static void network_handle_trade_header(NetworkContext *network, const NetworkFr
         pthread_mutex_unlock(&network->lock);
     }
 
-    network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK, ok ? "OK" : "KO", network->config->realm_name);
+    {
+        const char *ack_status = NULL;
+
+        if (ok) {
+            ack_status = "OK";
+        } else {
+            ack_status = "KO";
+        }
+
+        network_send_blank_reply_with_realm_fallback(network, frame->origin, realm_name, FRAME_TYPE_ACK, ack_status, network->config->realm_name);
+    }
     if (ok) {
         char *line = NULL;
         if (asprintf(&line, "Trade request received from %s.", realm_name) >= 0 && line != NULL) {
@@ -1917,7 +1969,15 @@ static void network_forward_or_discard(NetworkContext *network, const NetworkFra
 
     if (network_resolve_next_endpoint(network, frame->destination, &next_endpoint) && network_send_frame_to_endpoint(next_endpoint, frame)) {
         origin_name = network_derive_origin_realm(network, frame);
-        if (asprintf(&line, ">>> Received hop: %s -> %s (%s)", origin_name != NULL ? origin_name : frame->origin, frame->destination, network_frame_type_text(frame->type)) >= 0 && line != NULL) {
+        const char *hop_origin = NULL;
+
+        if (origin_name != NULL) {
+            hop_origin = origin_name;
+        } else {
+            hop_origin = frame->origin;
+        }
+
+        if (asprintf(&line, ">>> Received hop: %s -> %s (%s)", hop_origin, frame->destination, network_frame_type_text(frame->type)) >= 0 && line != NULL) {
             utils_println(line);
             free(line);
         }
@@ -1957,7 +2017,17 @@ static void network_handle_client(NetworkContext *network, citadel_socket_t clie
     }
 
     if (!frame_validate_checksum(&frame)) {
-        network_send_protocol_nack(network, raw_origin != NULL ? raw_origin : frame.origin);
+        {
+            const char *nack_origin = NULL;
+
+            if (raw_origin != NULL) {
+                nack_origin = raw_origin;
+            } else {
+                nack_origin = frame.origin;
+            }
+
+            network_send_protocol_nack(network, nack_origin);
+        }
         free(raw_origin);
         return;
     }
@@ -2298,7 +2368,30 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
     pthread_mutex_unlock(&network->lock);
 
     origin = network_build_self_endpoint(network->config);
-    if (origin == NULL || asprintf(&data, accepted ? "%s&%s&%s" : "%s&%s", accepted ? "ACCEPT" : "REJECT", network->config->realm_name, origin) < 0 || !frame_set(&frame, FRAME_TYPE_PLEDGE_RESPONSE, origin, realm_name, data, strlen(data))) {
+    if (origin == NULL) {
+        free(origin);
+        free(data);
+        free(peer_stable_endpoint);
+        return false;
+    }
+
+    if (accepted) {
+        if (asprintf(&data, "%s&%s&%s", "ACCEPT", network->config->realm_name, origin) < 0) {
+            free(origin);
+            free(data);
+            free(peer_stable_endpoint);
+            return false;
+        }
+    } else {
+        if (asprintf(&data, "%s&%s", "REJECT", network->config->realm_name, origin) < 0) {
+            free(origin);
+            free(data);
+            free(peer_stable_endpoint);
+            return false;
+        }
+    }
+
+    if (!frame_set(&frame, FRAME_TYPE_PLEDGE_RESPONSE, origin, realm_name, data, strlen(data))) {
         free(origin);
         free(data);
         free(peer_stable_endpoint);
@@ -2336,7 +2429,15 @@ bool network_send_pledge_response(NetworkContext *network, const char *realm_nam
 
         {
             char *line = NULL;
-            if (asprintf(&line, "Alliance with %s %s.", realm_name, accepted ? "established" : "rejected") >= 0 && line != NULL) {
+            const char *alliance_text = NULL;
+
+            if (accepted) {
+                alliance_text = "established";
+            } else {
+                alliance_text = "rejected";
+            }
+
+            if (asprintf(&line, "Alliance with %s %s.", realm_name, alliance_text) >= 0 && line != NULL) {
                 utils_println(line);
                 free(line);
             }

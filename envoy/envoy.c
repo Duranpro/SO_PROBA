@@ -10,7 +10,11 @@ static ssize_t envoy_read_exact_local(int fd, void *buffer, size_t size) {
     while (total < size) {
         ssize_t bytes = read(fd, cursor + total, size - total);
         if (bytes == 0) {
-            return total == 0 ? 0 : -1;
+            if (total == 0) {
+                return 0;
+            }
+
+            return -1;
         }
         if (bytes < 0) {
             if (errno == EINTR) {
@@ -197,9 +201,21 @@ bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *rea
     int pipe_fd[2] = {-1, -1};
     char pipe_fd_text[32];
     char envoy_id_text[32];
-    const char *response_text = accepted ? "ACCEPT" : "REJECT";
-    const char *stable_endpoint_arg = peer_stable_endpoint != NULL ? peer_stable_endpoint : "";
+    const char *response_text = NULL;
+    const char *stable_endpoint_arg = NULL;
     pid_t pid = 0;
+
+    if (accepted) {
+        response_text = "ACCEPT";
+    } else {
+        response_text = "REJECT";
+    }
+
+    if (peer_stable_endpoint != NULL) {
+        stable_endpoint_arg = peer_stable_endpoint;
+    } else {
+        stable_endpoint_arg = "";
+    }
 
     if (context == NULL || context->program_path == NULL || context->config_path == NULL || context->stock_path == NULL || realm == NULL || target_endpoint == NULL || target_endpoint[0] == '\0') {
         return false;
@@ -325,7 +341,11 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
     }
 
     mission_text = envoy_mission_exec_text(type);
-    file_arg = (file_path != NULL) ? file_path : "";
+    if (file_path != NULL) {
+        file_arg = file_path;
+    } else {
+        file_arg = "";
+    }
     memset(direct_endpoint, 0, sizeof(direct_endpoint));
     if (realm != NULL) {
         has_direct_endpoint = network_get_direct_endpoint_for_realm(&context->network, realm, direct_endpoint, sizeof(direct_endpoint));
@@ -361,6 +381,17 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
     }
 
     if (pid == 0) {
+        char *direct_endpoint_flag = NULL;
+        char *direct_endpoint_value = NULL;
+        char *realm_value = NULL;
+
+        if (has_direct_endpoint) {
+            direct_endpoint_flag = "--direct-endpoint";
+            direct_endpoint_value = direct_endpoint;
+        }
+
+        realm_value = (char *) realm;
+
         char *const argv_worker[] = {
             context->program_path,
             "--envoy-worker",
@@ -373,13 +404,13 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
             "--mission",
             (char *) mission_text,
             "--realm",
-            (char *) realm,
+            realm_value,
             "--file",
             (char *) file_arg,
             "--envoy-id",
             envoy_id_text,
-            has_direct_endpoint ? "--direct-endpoint" : NULL,
-            has_direct_endpoint ? direct_endpoint : NULL,
+            direct_endpoint_flag,
+            direct_endpoint_value,
             NULL
         };
         EnvoyResultHeader header;
@@ -393,7 +424,17 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
         header.envoy_id = slot->id;
         header.mission_type = (int) type;
         header.result_status = ENVOY_RESULT_FAILED;
-        strncpy(header.realm, realm != NULL ? realm : "", sizeof(header.realm) - 1);
+        {
+            const char *realm_value = NULL;
+
+            if (realm != NULL) {
+                realm_value = realm;
+            } else {
+                realm_value = "";
+            }
+
+            strncpy(header.realm, realm_value, sizeof(header.realm) - 1);
+        }
         header.realm[sizeof(header.realm) - 1] = '\0';
         header.remote_endpoint[0] = '\0';
         header.payload_size = (uint32_t) (sizeof(payload) - 1);
@@ -408,7 +449,11 @@ bool envoy_spawn_mission(struct MaesterContext *context, EnvoyMissionType type, 
     slot->status = ENVOY_SLOT_ON_MISSION;
     slot->mission_type = type;
     slot->target_realm = utils_strdup_safe(realm);
-    slot->file_path = file_path != NULL ? utils_strdup_safe(file_path) : NULL;
+    if (file_path != NULL) {
+        slot->file_path = utils_strdup_safe(file_path);
+    } else {
+        slot->file_path = NULL;
+    }
     slot->started_at = time(NULL);
 
     if (slot->target_realm == NULL || (file_path != NULL && slot->file_path == NULL)) {
@@ -522,9 +567,19 @@ void envoy_print_status(EnvoyManager *manager) {
             continue;
         }
 
-        if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)", slot->id, envoy_mission_text(slot->mission_type), slot->target_realm != NULL ? slot->target_realm : "?") >= 0 && line != NULL) {
-            utils_println(line);
-            free(line);
+        {
+            const char *target_realm = NULL;
+
+            if (slot->target_realm != NULL) {
+                target_realm = slot->target_realm;
+            } else {
+                target_realm = "?";
+            }
+
+            if (asprintf(&line, "- Envoy %d: ON MISSION (%s to %s)", slot->id, envoy_mission_text(slot->mission_type), target_realm) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
         }
     }
     pthread_mutex_unlock(&manager->mutex);
@@ -554,7 +609,17 @@ void envoy_reap_finished(struct MaesterContext *context) {
             read_fd = slot->read_fd;
             mission_type = slot->mission_type;
             response_accepted = slot->response_accepted;
-            realm = utils_strdup_safe(slot->target_realm != NULL ? slot->target_realm : "");
+            {
+                const char *target_realm = NULL;
+
+                if (slot->target_realm != NULL) {
+                    target_realm = slot->target_realm;
+                } else {
+                    target_realm = "";
+                }
+
+                realm = utils_strdup_safe(target_realm);
+            }
         }
         pthread_mutex_unlock(&context->envoys.mutex);
 
@@ -571,39 +636,114 @@ void envoy_reap_finished(struct MaesterContext *context) {
 
         if (read_ok) {
             if (header.mission_type == ENVOY_MISSION_PLEDGE) {
-                network_apply_envoy_pledge_result(&context->network, header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : ""), (EnvoyResultStatus) header.result_status, header.remote_endpoint);
+                {
+                    const char *result_realm = NULL;
+
+                    if (header.realm[0] != '\0') {
+                        result_realm = header.realm;
+                    } else if (realm != NULL) {
+                        result_realm = realm;
+                    } else {
+                        result_realm = "";
+                    }
+
+                    network_apply_envoy_pledge_result(&context->network, result_realm, (EnvoyResultStatus) header.result_status, header.remote_endpoint);
+                }
                 if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Alliance with %s forged successfully!", header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "")) >= 0 && line != NULL) {
+                    const char *result_realm = NULL;
+
+                    if (header.realm[0] != '\0') {
+                        result_realm = header.realm;
+                    } else if (realm != NULL) {
+                        result_realm = realm;
+                    } else {
+                        result_realm = "";
+                    }
+
+                    if (asprintf(&line, ">>> Alliance with %s forged successfully!", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
                 } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_REJECTED) {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Alliance with %s was refused!", header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "")) >= 0 && line != NULL) {
+                    const char *result_realm = NULL;
+
+                    if (header.realm[0] != '\0') {
+                        result_realm = header.realm;
+                    } else if (realm != NULL) {
+                        result_realm = realm;
+                    } else {
+                        result_realm = "";
+                    }
+
+                    if (asprintf(&line, ">>> Alliance with %s was refused!", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
                 } else if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_TIMEOUT) {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge to %s has failed (TIMEOUT).", header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "")) >= 0 && line != NULL) {
+                    const char *result_realm = NULL;
+
+                    if (header.realm[0] != '\0') {
+                        result_realm = header.realm;
+                    } else if (realm != NULL) {
+                        result_realm = realm;
+                    } else {
+                        result_realm = "";
+                    }
+
+                    if (asprintf(&line, ">>> Pledge to %s has failed (TIMEOUT).", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
                 } else {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge to %s has failed.", header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "")) >= 0 && line != NULL) {
+                    const char *result_realm = NULL;
+
+                    if (header.realm[0] != '\0') {
+                        result_realm = header.realm;
+                    } else if (realm != NULL) {
+                        result_realm = realm;
+                    } else {
+                        result_realm = "";
+                    }
+
+                    if (asprintf(&line, ">>> Pledge to %s has failed.", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
                 }
             } else if (header.mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
-                const char *result_realm = header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "");
+                const char *result_realm = NULL;
+                const char *payload_text = NULL;
+                const char *alliance_text = NULL;
 
-                network_apply_envoy_pledge_response_result(&context->network, result_realm, response_accepted, (EnvoyResultStatus) header.result_status, payload != NULL ? payload : "");
+                if (header.realm[0] != '\0') {
+                    result_realm = header.realm;
+                } else if (realm != NULL) {
+                    result_realm = realm;
+                } else {
+                    result_realm = "";
+                }
+
+                if (payload != NULL) {
+                    payload_text = payload;
+                } else {
+                    payload_text = "";
+                }
+
+                network_apply_envoy_pledge_response_result(&context->network, result_realm, response_accepted, (EnvoyResultStatus) header.result_status, payload_text);
                 if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
                     char *line = NULL;
-                    if (asprintf(&line, "Alliance with %s %s.", result_realm, response_accepted ? "established" : "rejected") >= 0 && line != NULL) {
+
+                    if (response_accepted) {
+                        alliance_text = "established";
+                    } else {
+                        alliance_text = "rejected";
+                    }
+
+                    if (asprintf(&line, "Alliance with %s %s.", result_realm, alliance_text) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
@@ -615,19 +755,49 @@ void envoy_reap_finished(struct MaesterContext *context) {
                     }
                 }
             } else if (header.mission_type == ENVOY_MISSION_PRODUCTS) {
-                const char *result_realm = header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "");
+                const char *result_realm = NULL;
+                const char *payload_text = NULL;
+
+                if (header.realm[0] != '\0') {
+                    result_realm = header.realm;
+                } else if (realm != NULL) {
+                    result_realm = realm;
+                } else {
+                    result_realm = "";
+                }
 
                 if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
-                    network_apply_envoy_products_result(&context->network, result_realm, payload != NULL ? payload : "");
+                    if (payload != NULL) {
+                        payload_text = payload;
+                    } else {
+                        payload_text = "";
+                    }
+
+                    network_apply_envoy_products_result(&context->network, result_realm, payload_text);
                 } else {
                     (void) result_realm;
                     utils_println("Connection failed.");
                 }
             } else if (header.mission_type == ENVOY_MISSION_TRADE) {
-                const char *result_realm = header.realm[0] != '\0' ? header.realm : (realm != NULL ? realm : "");
+                const char *result_realm = NULL;
+                const char *payload_text = NULL;
+
+                if (header.realm[0] != '\0') {
+                    result_realm = header.realm;
+                } else if (realm != NULL) {
+                    result_realm = realm;
+                } else {
+                    result_realm = "";
+                }
 
                 if ((EnvoyResultStatus) header.result_status == ENVOY_RESULT_OK) {
-                    if (network_apply_envoy_trade_result(&context->network, &context->stock, context->stock_path, result_realm, (EnvoyResultStatus) header.result_status, payload != NULL ? payload : "")) {
+                    if (payload != NULL) {
+                        payload_text = payload;
+                    } else {
+                        payload_text = "";
+                    }
+
+                    if (network_apply_envoy_trade_result(&context->network, &context->stock, context->stock_path, result_realm, (EnvoyResultStatus) header.result_status, payload_text)) {
                         char *line = NULL;
                         if (asprintf(&line, ">>> Order accepted by %s. Stock updated.", result_realm) >= 0 && line != NULL) {
                             utils_println(line);
@@ -662,19 +832,35 @@ void envoy_reap_finished(struct MaesterContext *context) {
             }
         } else {
             if (mission_type == ENVOY_MISSION_PLEDGE) {
-                network_apply_envoy_pledge_result(&context->network, realm != NULL ? realm : "", ENVOY_RESULT_FAILED, NULL);
+                const char *result_realm = NULL;
+
+                if (realm != NULL) {
+                    result_realm = realm;
+                } else {
+                    result_realm = "";
+                }
+
+                network_apply_envoy_pledge_result(&context->network, result_realm, ENVOY_RESULT_FAILED, NULL);
                 {
                     char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge to %s has failed.", realm != NULL ? realm : "") >= 0 && line != NULL) {
+                    if (asprintf(&line, ">>> Pledge to %s has failed.", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }
                 }
             } else if (mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
-                network_apply_envoy_pledge_response_result(&context->network, realm != NULL ? realm : "", response_accepted, ENVOY_RESULT_FAILED, "");
+                const char *result_realm = NULL;
+
+                if (realm != NULL) {
+                    result_realm = realm;
+                } else {
+                    result_realm = "";
+                }
+
+                network_apply_envoy_pledge_response_result(&context->network, result_realm, response_accepted, ENVOY_RESULT_FAILED, "");
                 {
                     char *line = NULL;
-                    if (asprintf(&line, "Alliance with %s failed.", realm != NULL ? realm : "") >= 0 && line != NULL) {
+                    if (asprintf(&line, "Alliance with %s failed.", result_realm) >= 0 && line != NULL) {
                         utils_println(line);
                         free(line);
                     }

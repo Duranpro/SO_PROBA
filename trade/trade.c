@@ -241,7 +241,15 @@ static bool trade_write_shopping_list(const TradeSession *session, char **file_p
     }
 
     if (file_name_out != NULL) {
-        *file_name_out = utils_strdup_safe(strrchr(path, '/') != NULL ? strrchr(path, '/') + 1 : path);
+        const char *base_name = NULL;
+
+        if (strrchr(path, '/') != NULL) {
+            base_name = strrchr(path, '/') + 1;
+        } else {
+            base_name = path;
+        }
+
+        *file_name_out = utils_strdup_safe(base_name);
     }
 
     if (file_size_out != NULL) {
@@ -292,7 +300,14 @@ bool trade_run_local(struct MaesterContext *context, const char *target_realm) {
         if (line2 != NULL) {
             for (i = 0; i < session.available_count; ++i) {
                 char *new_line = NULL;
-                const char *separator = (i + 1 < session.available_count) ? ", " : ".";
+                const char *separator = NULL;
+
+                if (i + 1 < session.available_count) {
+                    separator = ", ";
+                } else {
+                    separator = ".";
+                }
+
                 if (asprintf(&new_line, "%s%s%s", line2, session.available_products[i].name, separator) >= 0 && new_line != NULL) {
                     free(line2);
                     line2 = new_line;

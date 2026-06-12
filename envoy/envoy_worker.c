@@ -96,7 +96,11 @@ static ssize_t envoy_worker_read_exact(int fd, void *buffer, size_t size) {
     while (total < size) {
         ssize_t bytes = read(fd, cursor + total, size - total);
         if (bytes == 0) {
-            return total == 0 ? 0 : -1;
+            if (total == 0) {
+                return 0;
+            }
+
+            return -1;
         }
         if (bytes < 0) {
             if (errno == EINTR) {
@@ -678,7 +682,11 @@ static bool envoy_worker_compute_md5_from_memory(EnvoyWorkerContext *ctx, const 
         return false;
     }
 
-    base_dir = (ctx->config.workdir != NULL && ctx->config.workdir[0] != '\0') ? ctx->config.workdir : "/tmp";
+    if (ctx->config.workdir != NULL && ctx->config.workdir[0] != '\0') {
+        base_dir = ctx->config.workdir;
+    } else {
+        base_dir = "/tmp";
+    }
     if (asprintf(&template_path, "%s/envoy-products-XXXXXX", base_dir) < 0 || template_path == NULL) {
         return false;
     }
@@ -758,8 +766,17 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
     }
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK, ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &ack_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for trade ACK." : "Invalid trade ACK received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for trade ACK.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid trade ACK received.");
+        }
         goto cleanup;
     }
 
@@ -777,8 +794,17 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
     }
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_MD5_ACK, ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &md5_ack_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for trade MD5 ACK." : "Invalid trade MD5 ACK received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for trade MD5 ACK.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid trade MD5 ACK received.");
+        }
         goto cleanup;
     }
 
@@ -791,8 +817,17 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
     frame_payload = NULL;
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_TRADE_RESPONSE, ENVOY_WORKER_TRADE_TIMEOUT_SECONDS, &response_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for trade response." : "Invalid trade response received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for trade response.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid trade response received.");
+        }
         goto cleanup;
     }
 
@@ -807,7 +842,11 @@ static EnvoyResultStatus envoy_worker_run_trade(EnvoyWorkerContext *ctx, char *r
 
     if (strcmp(frame_payload, "OK") == 0) {
         *payload_out = utils_strdup_safe(order_text);
-        result = (*payload_out != NULL) ? ENVOY_RESULT_OK : ENVOY_RESULT_FAILED;
+        if (*payload_out != NULL) {
+            result = ENVOY_RESULT_OK;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
     } else if (strncmp(frame_payload, "REJECT&", 7) == 0) {
         *payload_out = utils_strdup_safe(frame_payload + 7);
         result = ENVOY_RESULT_REJECTED;
@@ -872,8 +911,17 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
     }
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for final ACK." : "Invalid final ACK received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for final ACK.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid final ACK received.");
+        }
         goto cleanup;
     }
 
@@ -885,7 +933,11 @@ static EnvoyResultStatus envoy_worker_run_pledge_response(EnvoyWorkerContext *ct
 
     result = ENVOY_RESULT_OK;
     if (accepted) {
-        *payload_out = utils_strdup_safe(ctx->peer_stable_endpoint != NULL ? ctx->peer_stable_endpoint : "");
+        if (ctx->peer_stable_endpoint != NULL) {
+            *payload_out = utils_strdup_safe(ctx->peer_stable_endpoint);
+        } else {
+            *payload_out = utils_strdup_safe("");
+        }
     } else {
         *payload_out = utils_strdup_safe("Rejected");
     }
@@ -986,8 +1038,17 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     payload_text = NULL;
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_ACK, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &ack_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for pledge ACK." : "Invalid pledge ACK received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for pledge ACK.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid pledge ACK received.");
+        }
         goto cleanup;
     }
 
@@ -1005,8 +1066,17 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     }
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_MD5_ACK, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &md5_ack_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for MD5 ACK." : "Invalid MD5 ACK received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for MD5 ACK.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid MD5 ACK received.");
+        }
         goto cleanup;
     }
 
@@ -1019,8 +1089,17 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     frame_payload = NULL;
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_PLEDGE_RESPONSE, ENVOY_WORKER_PLEDGE_TIMEOUT_SECONDS, &response_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for pledge response." : "Invalid pledge response received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for pledge response.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid pledge response received.");
+        }
         goto cleanup;
     }
 
@@ -1123,8 +1202,17 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
     }
 
     if (!envoy_worker_wait_frame_type(listener_fd, FRAME_TYPE_PRODUCTS_RESPONSE, ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS, &response_frame)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out waiting for products response." : "Invalid products response received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out waiting for products response.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid products response received.");
+        }
         goto cleanup;
     }
 
@@ -1144,8 +1232,17 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
     }
 
     if (!envoy_worker_receive_file_payload(listener_fd, FRAME_TYPE_PRODUCTS_DATA, expected_size, ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS, &catalog_text, &catalog_size)) {
-        result = (errno == ETIMEDOUT) ? ENVOY_RESULT_TIMEOUT : ENVOY_RESULT_FAILED;
-        *payload_out = utils_strdup_safe(result == ENVOY_RESULT_TIMEOUT ? "Timed out receiving products data." : "Invalid products data received.");
+        if (errno == ETIMEDOUT) {
+            result = ENVOY_RESULT_TIMEOUT;
+        } else {
+            result = ENVOY_RESULT_FAILED;
+        }
+
+        if (result == ENVOY_RESULT_TIMEOUT) {
+            *payload_out = utils_strdup_safe("Timed out receiving products data.");
+        } else {
+            *payload_out = utils_strdup_safe("Invalid products data received.");
+        }
         goto cleanup;
     }
 
@@ -1154,7 +1251,17 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
         goto cleanup;
     }
 
-    snprintf(md5_payload, sizeof(md5_payload), "%s&%s", strcmp(actual_md5, expected_md5) == 0 ? "CHECK_OK" : "CHECK_KO", ctx->config.realm_name);
+    {
+        const char *md5_status = NULL;
+
+        if (strcmp(actual_md5, expected_md5) == 0) {
+            md5_status = "CHECK_OK";
+        } else {
+            md5_status = "CHECK_KO";
+        }
+
+        snprintf(md5_payload, sizeof(md5_payload), "%s&%s", md5_status, ctx->config.realm_name);
+    }
     if (!envoy_worker_send_md5_ack(response_frame.origin, private_endpoint, "", md5_payload)) {
         *payload_out = utils_strdup_safe("Could not send products MD5 acknowledgement.");
         goto cleanup;
@@ -1215,16 +1322,32 @@ int envoy_worker_main(int argc, char **argv) {
     header.envoy_id = context.envoy_id;
     header.mission_type = (int) context.mission_type;
     header.result_status = (int) result;
-    strncpy(header.realm, context.realm != NULL ? context.realm : "", sizeof(header.realm) - 1);
+    if (context.realm != NULL) {
+        strncpy(header.realm, context.realm, sizeof(header.realm) - 1);
+    } else {
+        strncpy(header.realm, "", sizeof(header.realm) - 1);
+    }
     header.realm[sizeof(header.realm) - 1] = '\0';
     strncpy(header.remote_endpoint, remote_endpoint, sizeof(header.remote_endpoint) - 1);
     header.remote_endpoint[sizeof(header.remote_endpoint) - 1] = '\0';
-    header.payload_size = (uint32_t) strlen(payload_text != NULL ? payload_text : "");
+    if (payload_text != NULL) {
+        header.payload_size = (uint32_t) strlen(payload_text);
+    } else {
+        header.payload_size = (uint32_t) strlen("");
+    }
 
-    write_ok = envoy_result_write(context.pipe_fd, &header, payload_text != NULL ? payload_text : "");
+    if (payload_text != NULL) {
+        write_ok = envoy_result_write(context.pipe_fd, &header, payload_text);
+    } else {
+        write_ok = envoy_result_write(context.pipe_fd, &header, "");
+    }
     close(context.pipe_fd);
 
     free(payload_text);
     envoy_worker_context_free(&context);
-    return write_ok ? 0 : 1;
+    if (write_ok) {
+        return 0;
+    }
+
+    return 1;
 }
