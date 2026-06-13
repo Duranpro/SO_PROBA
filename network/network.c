@@ -1961,6 +1961,19 @@ static void network_process_local_frame(NetworkContext *network, const NetworkFr
     }
 }
 
+static bool network_should_log_forwarded_hop(uint8_t frame_type) {
+    switch (frame_type) {
+        case FRAME_TYPE_SIGIL_DATA:
+        case FRAME_TYPE_PRODUCTS_DATA:
+        case FRAME_TYPE_TRADE_DATA:
+        case FRAME_TYPE_ACK:
+        case FRAME_TYPE_MD5_ACK:
+            return false;
+        default:
+            return true;
+    }
+}
+
 static void network_forward_or_discard(NetworkContext *network, const NetworkFrame *frame) {
     char *origin_realm = NULL;
     char *next_endpoint = NULL;
@@ -1968,24 +1981,26 @@ static void network_forward_or_discard(NetworkContext *network, const NetworkFra
     char *line = NULL;
 
     if (network_resolve_next_endpoint(network, frame->destination, &next_endpoint) && network_send_frame_to_endpoint(next_endpoint, frame)) {
-        origin_name = network_derive_origin_realm(network, frame);
-        const char *hop_origin = NULL;
+        if (network_should_log_forwarded_hop(frame->tipus)) {
+            const char *hop_origin = NULL;
 
-        if (origin_name != NULL) {
-            hop_origin = origin_name;
-        } else {
-            hop_origin = frame->origen;
-        }
+            origin_name = network_derive_origin_realm(network, frame);
+            if (origin_name != NULL) {
+                hop_origin = origin_name;
+            } else {
+                hop_origin = frame->origen;
+            }
 
-        if (asprintf(&line, ">>> Received hop: %s -> %s (%s)", hop_origin, frame->destination, network_frame_type_text(frame->tipus)) >= 0 && line != NULL) {
-            utils_println(line);
-            free(line);
+            if (asprintf(&line, ">>> Received hop: %s -> %s (%s)", hop_origin, frame->destination, network_frame_type_text(frame->tipus)) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
+            if (asprintf(&line, "Found route: %s -> %s", frame->destination, next_endpoint) >= 0 && line != NULL) {
+                utils_println(line);
+                free(line);
+            }
+            utils_println("Forwarding...");
         }
-        if (asprintf(&line, "Found route: %s -> %s", frame->destination, next_endpoint) >= 0 && line != NULL) {
-            utils_println(line);
-            free(line);
-        }
-        utils_println("Forwarding...");
         free(next_endpoint);
         free(origin_name);
         return;
