@@ -347,15 +347,13 @@ static citadel_socket_t network_create_listener(const CitadelConfig *config) {
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &option, sizeof(option));
 
     if (inet_pton(AF_INET, config->ip_regne, &address.sin_addr) <= 0) {
-        address.sin_addr.s_addr = htonl(INADDR_ANY);
+        CITADEL_SOCKET_CLOSE(server_fd);
+        return CITADEL_INVALID_SOCKET;
     }
 
     if (bind(server_fd, (struct sockaddr *) &address, sizeof(address)) != 0) {
-        address.sin_addr.s_addr = htonl(INADDR_ANY);
-        if (bind(server_fd, (struct sockaddr *) &address, sizeof(address)) != 0) {
-            CITADEL_SOCKET_CLOSE(server_fd);
-            return CITADEL_INVALID_SOCKET;
-        }
+        CITADEL_SOCKET_CLOSE(server_fd);
+        return CITADEL_INVALID_SOCKET;
     }
 
     if (listen(server_fd, 16) != 0) {
