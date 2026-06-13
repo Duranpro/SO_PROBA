@@ -1110,12 +1110,10 @@ static void network_check_timeouts(NetworkContext *network) {
     for (i = 0; i < network->num_aliances; ++i) {
         if (network->aliances[i].estat == ALLIANCE_PENDING_OUT && network->aliances[i].limit_temps > 0 && now >= network->aliances[i].limit_temps) {
             network_mark_timeout(&network->aliances[i]);
-            {
-                char *line = NULL;
-                if (asprintf(&line, "Pledge to %s has failed (TIMEOUT).", network->aliances[i].nom_regne) >= 0 && line != NULL) {
-                    network_log_line(line);
-                    free(line);
-                }
+            char *line = NULL;
+            if (asprintf(&line, "Pledge to %s has failed (TIMEOUT).", network->aliances[i].nom_regne) >= 0 && line != NULL) {
+                network_log_line(line);
+                free(line);
             }
         }
     }

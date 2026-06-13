@@ -841,12 +841,10 @@ void envoy_reap_finished(struct MaesterContext *context) {
                 }
 
                 network_apply_envoy_pledge_result(&context->network, result_realm, ENVOY_RESULT_FAILED, NULL);
-                {
-                    char *line = NULL;
-                    if (asprintf(&line, ">>> Pledge to %s has failed.", result_realm) >= 0 && line != NULL) {
-                        utils_println(line);
-                        free(line);
-                    }
+                char *line = NULL;
+                if (asprintf(&line, ">>> Pledge to %s has failed.", result_realm) >= 0 && line != NULL) {
+                    utils_println(line);
+                    free(line);
                 }
             } else if (mission_type == ENVOY_MISSION_PLEDGE_RESPONSE) {
                 const char *result_realm = NULL;
@@ -858,12 +856,10 @@ void envoy_reap_finished(struct MaesterContext *context) {
                 }
 
                 network_apply_envoy_pledge_response_result(&context->network, result_realm, response_accepted, ENVOY_RESULT_FAILED, "");
-                {
-                    char *line = NULL;
-                    if (asprintf(&line, "Alliance with %s failed.", result_realm) >= 0 && line != NULL) {
-                        utils_println(line);
-                        free(line);
-                    }
+                char *line = NULL;
+                if (asprintf(&line, "Alliance with %s failed.", result_realm) >= 0 && line != NULL) {
+                    utils_println(line);
+                    free(line);
                 }
             }
         }

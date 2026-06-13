@@ -227,13 +227,11 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    {
-        char *line = NULL;
-        if (asprintf(&line, "Maester of %s initialized. The board is set.\n", context.config.nom_regne) >= 0 &&
-            line != NULL) {
-            utils_print(line);
-            free(line);
-        }
+    char *startup_line = NULL;
+    if (asprintf(&startup_line, "Maester of %s initialized. The board is set.\n", context.config.nom_regne) >= 0 &&
+        startup_line != NULL) {
+        utils_print(startup_line);
+        free(startup_line);
     }
 
     terminal_run(&context, &g_stop_requested);

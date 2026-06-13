@@ -153,12 +153,10 @@ static bool commands_handle_pledge(MaesterContext *context, char **tokens, size_
             utils_println("All envoys are occupied. Your command must wait.");
             return true;
         }
-        {
-            char *line = NULL;
-            if (asprintf(&line, "Pledge sent to %s.", tokens[1]) >= 0 && line != NULL) {
-                utils_println(line);
-                free(line);
-            }
+        char *line = NULL;
+        if (asprintf(&line, "Pledge sent to %s.", tokens[1]) >= 0 && line != NULL) {
+            utils_println(line);
+            free(line);
         }
         return true;
     }

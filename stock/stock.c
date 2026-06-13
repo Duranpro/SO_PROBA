@@ -440,13 +440,11 @@ void stock_print_local(const Stock *stock) {
     }
     utils_println("--------------------------------------------------------");
 
-    {
-        char *summary = NULL;
-        int written = asprintf(&summary, "Total Entries: %zu\n", num_copia_stock);
-        if (written >= 0 && summary != NULL) {
-            utils_print(summary);
-            free(summary);
-        }
+    char *summary = NULL;
+    int written = asprintf(&summary, "Total Entries: %zu\n", num_copia_stock);
+    if (written >= 0 && summary != NULL) {
+        utils_print(summary);
+        free(summary);
     }
 
     stock_alliberar_productes(copia_stock, num_copia_stock);

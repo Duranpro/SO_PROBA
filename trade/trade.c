@@ -285,13 +285,11 @@ bool trade_run_local(struct MaesterContext *context, const char *regne_desti) {
         return false;
     }
 
-    {
-        char *message = NULL;
-        int written = asprintf(&message, "Trade with %s begins.\n" "A direct path is open; your houses are allied, and no intermediaries stand in between.\n", session.regne_desti);
-        if (written >= 0 && message != NULL) {
-            utils_print(message);
-            free(message);
-        }
+    char *start_message = NULL;
+    int written = asprintf(&start_message, "Trade with %s begins.\n" "A direct path is open; your houses are allied, and no intermediaries stand in between.\n", session.regne_desti);
+    if (written >= 0 && start_message != NULL) {
+        utils_print(start_message);
+        free(start_message);
     }
 
     if (context->network.inicialitzat && network_get_remote_products_copy(&context->network, session.regne_desti, &session.available_products, &session.available_count)) {
