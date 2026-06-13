@@ -954,7 +954,7 @@ cleanup:
 static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx, char *remote_endpoint_out, size_t remote_endpoint_size, char **payload_out) {
     int listener_fd = -1;
     char endpoint[128];
-    char message[256];
+    char *message = NULL;
 
     if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL) {
         return ENVOY_RESULT_FAILED;
@@ -964,7 +964,6 @@ static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx, char *re
     remote_endpoint_out[0] = '\0';
     *payload_out = NULL;
     memset(endpoint, 0, sizeof(endpoint));
-    memset(message, 0, sizeof(message));
 
     listener_fd = envoy_worker_create_private_listener(&ctx->config, endpoint, sizeof(endpoint));
     if (listener_fd < 0) {
@@ -974,8 +973,8 @@ static EnvoyResultStatus envoy_worker_run_stub(EnvoyWorkerContext *ctx, char *re
 
     close(listener_fd);
 
-    if (snprintf(message, sizeof(message), "Envoy worker stub executed correctly. Private endpoint: %s", endpoint) >= 0) {
-        *payload_out = utils_strdup_safe(message);
+    if (asprintf(&message, "Envoy worker stub executed correctly. Private endpoint: %s", endpoint) >= 0 && message != NULL) {
+        *payload_out = message;
     } else {
         *payload_out = utils_strdup_safe("Envoy worker stub executed correctly");
     }
@@ -997,7 +996,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
     NetworkFrame response_frame;
     char *payload_text = NULL;
     char *frame_payload = NULL;
-    char ack_final[64];
+    char *ack_final = NULL;
     EnvoyResultStatus result = ENVOY_RESULT_FAILED;
 
     if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL) {
@@ -1109,8 +1108,11 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
         goto cleanup;
     }
 
-    snprintf(ack_final, sizeof(ack_final), "OK&%s", ctx->config.nom_regne);
-    (void) envoy_worker_send_ack(response_frame.origen, private_endpoint, "", ack_final);
+    if (asprintf(&ack_final, "OK&%s", ctx->config.nom_regne) >= 0 && ack_final != NULL) {
+        (void) envoy_worker_send_ack(response_frame.origen, private_endpoint, "", ack_final);
+        free(ack_final);
+        ack_final = NULL;
+    }
 
     if (envoy_worker_payload_starts_with(frame_payload, "ACCEPT&")) {
         char *response_copy = utils_strdup_safe(frame_payload);
@@ -1154,6 +1156,7 @@ static EnvoyResultStatus envoy_worker_run_pledge(EnvoyWorkerContext *ctx, char *
 cleanup:
     free(frame_payload);
     free(payload_text);
+    free(ack_final);
     if (listener_fd >= 0) {
         close(listener_fd);
     }
@@ -1174,8 +1177,8 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
     char *catalog_text = NULL;
     size_t catalog_size = 0;
     char actual_md5[CITADEL_MD5_LENGTH + 1];
-    char ack_payload[64];
-    char md5_payload[64];
+    char *ack_payload = NULL;
+    char *md5_payload = NULL;
     EnvoyResultStatus result = ENVOY_RESULT_FAILED;
 
     if (ctx == NULL || remote_endpoint_out == NULL || payload_out == NULL) {
@@ -1225,11 +1228,16 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
         goto cleanup;
     }
 
-    snprintf(ack_payload, sizeof(ack_payload), "OK&%s", ctx->config.nom_regne);
+    if (asprintf(&ack_payload, "OK&%s", ctx->config.nom_regne) < 0 || ack_payload == NULL) {
+        *payload_out = utils_strdup_safe("Could not acknowledge products response.");
+        goto cleanup;
+    }
     if (!envoy_worker_send_ack(response_frame.origen, private_endpoint, "", ack_payload)) {
         *payload_out = utils_strdup_safe("Could not acknowledge products response.");
         goto cleanup;
     }
+    free(ack_payload);
+    ack_payload = NULL;
 
     if (!envoy_worker_receive_file_payload(listener_fd, FRAME_TYPE_PRODUCTS_DATA, expected_size, ENVOY_WORKER_PRODUCTS_TIMEOUT_SECONDS, &catalog_text, &catalog_size)) {
         if (errno == ETIMEDOUT) {
@@ -1260,7 +1268,10 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
             md5_status = "CHECK_KO";
         }
 
-        snprintf(md5_payload, sizeof(md5_payload), "%s&%s", md5_status, ctx->config.nom_regne);
+        if (asprintf(&md5_payload, "%s&%s", md5_status, ctx->config.nom_regne) < 0 || md5_payload == NULL) {
+            *payload_out = utils_strdup_safe("Could not send products MD5 acknowledgement.");
+            goto cleanup;
+        }
     }
     if (!envoy_worker_send_md5_ack(response_frame.origen, private_endpoint, "", md5_payload)) {
         *payload_out = utils_strdup_safe("Could not send products MD5 acknowledgement.");
@@ -1277,6 +1288,8 @@ static EnvoyResultStatus envoy_worker_run_products(EnvoyWorkerContext *ctx, char
     result = ENVOY_RESULT_OK;
 
 cleanup:
+    free(ack_payload);
+    free(md5_payload);
     if (listener_fd >= 0) {
         close(listener_fd);
     }
