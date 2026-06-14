@@ -315,7 +315,7 @@ bool trade_run_local(struct MaesterContext *context, const char *regne_desti) {
             free(line2);
         }
     } else {
-        utils_println("No products available. Use LIST PRODUCTS\nfirst.");
+        utils_println("No products available. Use LIST PRODUCTS first.");
     }
 
     while (keep_running) {

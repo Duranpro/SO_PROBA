@@ -191,7 +191,7 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             return true;
         }
         if (!network_has_remote_products(&context->network, tokens[2])) {
-            utils_println("No products available. Use LIST PRODUCTS\nfirst.");
+            utils_println("No products available. Use LIST PRODUCTS first.");
             return true;
         }
         if (!envoy_manager_has_free_slot(&context->envoys)) {
