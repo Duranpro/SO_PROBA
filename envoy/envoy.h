@@ -56,6 +56,7 @@ typedef struct {
 } EnvoyManager;
 
 bool envoy_manager_init(EnvoyManager *manager, int num_envoys);
+bool envoy_manager_has_free_slot(EnvoyManager *manager);
 void envoy_manager_destroy(EnvoyManager *manager);
 void envoy_print_status(EnvoyManager *manager);
 void envoy_reap_finished(struct MaesterContext *context);

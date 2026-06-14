@@ -195,6 +195,26 @@ bool envoy_manager_init(EnvoyManager *manager, int num_items) {
     return true;
 }
 
+bool envoy_manager_has_free_slot(EnvoyManager *manager) {
+    int i = 0;
+    bool has_free_slot = false;
+
+    if (manager == NULL || manager->slots == NULL || manager->num_envoys <= 0) {
+        return false;
+    }
+
+    pthread_mutex_lock(&manager->mutex);
+    for (i = 0; i < manager->num_envoys; ++i) {
+        if (manager->slots[i].estat == ENVOY_SLOT_FREE) {
+            has_free_slot = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&manager->mutex);
+
+    return has_free_slot;
+}
+
 bool envoy_spawn_pledge_response(struct MaesterContext *context, const char *regne, bool accepted, const char *endpoint_desti, const char *endpoint_estable_peer) {
     EnvoySlot *slot = NULL;
     int i = 0;

@@ -94,6 +94,7 @@ bool network_send_pledge(NetworkContext *network, const char *nom_regne, const c
 bool network_send_pledge_response(NetworkContext *network, const char *nom_regne, bool accepted);
 bool network_request_remote_products(NetworkContext *network, const char *nom_regne);
 bool network_send_trade_offer(NetworkContext *network, const char *nom_regne, const char *ruta_fitxer);
+bool network_has_remote_products(NetworkContext *network, const char *nom_regne);
 bool network_get_remote_products_copy(NetworkContext *network, const char *nom_regne, Product **productes_out, size_t *num_productes_out);
 bool network_can_launch_pledge(NetworkContext *network, const char *nom_regne);
 bool network_mark_pledge_pending(NetworkContext *network, const char *nom_regne);

@@ -190,6 +190,14 @@ static bool commands_handle_start(MaesterContext *context, char **tokens, size_t
             commands_print_trade_authorization_error(tokens[2]);
             return true;
         }
+        if (!network_has_remote_products(&context->network, tokens[2])) {
+            utils_println("No products available. Use LIST PRODUCTS\nfirst.");
+            return true;
+        }
+        if (!envoy_manager_has_free_slot(&context->envoys)) {
+            utils_println("All envoys are occupied. Your command must wait.");
+            return true;
+        }
         trade_run_local(context, tokens[2]);
         return true;
     }

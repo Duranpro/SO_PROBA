@@ -1050,7 +1050,7 @@ static bool network_finalitzar_recepcio_transfer(NetworkContext *network) {
 
             if (stock_aplicar_order(network->stock, productes, num_items, &reason)) {
                 payload = "OK";
-                network_log_line("Order processed successfully. Stock updated.");
+                network_println("Order processed successfully. Stock updated.");
             } else {
                 if (reason != NULL && strcmp(reason, "OUT_OF_STOCK") == 0) {
                     network_println("The vaults stand empty; the order cannot be fulfilled");
@@ -2602,6 +2602,22 @@ bool network_get_remote_products_copy(NetworkContext *network, const char *nom_r
     pthread_mutex_unlock(&network->lock);
 
     return *productes_out != NULL;
+}
+
+bool network_has_remote_products(NetworkContext *network, const char *nom_regne) {
+    AllianceEntry *entry = NULL;
+    bool has_products = false;
+
+    if (network == NULL || nom_regne == NULL) {
+        return false;
+    }
+
+    pthread_mutex_lock(&network->lock);
+    entry = network_buscar_entrada_locked(network, nom_regne);
+    has_products = (entry != NULL && entry->cataleg != NULL && entry->num_cataleg > 0);
+    pthread_mutex_unlock(&network->lock);
+
+    return has_products;
 }
 
 bool network_get_direct_endpoint_for_realm(NetworkContext *network, const char *regne, char *endpoint_out, size_t endpoint_size) {
